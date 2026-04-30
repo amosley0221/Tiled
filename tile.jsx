@@ -140,8 +140,79 @@ function TileBody({ tile, onVote }) {
         <Poll poll={tile.poll} onVote={onVote} />
       </div>
     );
+    case 'chart': return (
+      <div className="ti-body ti-body-chart">
+        <BarChart chart={tile.chart} />
+        {tile.caption && <p className="ti-caption">{tile.caption}</p>}
+      </div>
+    );
+    case 'grid': return (
+      <div className="ti-body ti-body-grid">
+        <DataGrid grid={tile.grid} />
+        {tile.caption && <p className="ti-caption">{tile.caption}</p>}
+      </div>
+    );
     default: return null;
   }
+}
+
+function BarChart({ chart, large = false }) {
+  if (!chart || !chart.data || !chart.data.length) return null;
+  const max = Math.max(...chart.data.map(d => d.value), 1);
+  return (
+    <div className={`ti-chart${large ? ' ti-chart-lg' : ''}`}>
+      <div className="ti-chart-hd">
+        <span className="ti-chart-label">{chart.label}</span>
+        {chart.unit && <span className="ti-chart-unit">{chart.unit}</span>}
+      </div>
+      <div className="ti-chart-bars">
+        {chart.data.map((d, i) => {
+          const pct = (d.value / max) * 100;
+          return (
+            <div key={i} className="ti-chart-col">
+              <div className="ti-chart-bar-wrap">
+                <span className="ti-chart-bar" style={{ height: `${pct}%` }}>
+                  <span className="ti-chart-bar-cap" />
+                </span>
+              </div>
+              <span className="ti-chart-x">{d.label}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="ti-chart-axis">
+        <span>0</span><span>{max}</span>
+      </div>
+    </div>
+  );
+}
+
+function DataGrid({ grid, large = false }) {
+  if (!grid || !grid.columns) return null;
+  return (
+    <div className={`ti-datagrid${large ? ' ti-datagrid-lg' : ''}`}>
+      <div className="ti-datagrid-row ti-datagrid-hd"
+           style={{ gridTemplateColumns: `repeat(${grid.columns.length}, minmax(0, 1fr))` }}>
+        {grid.columns.map((c, i) => <div key={i} className="ti-datagrid-cell">{c}</div>)}
+      </div>
+      <div className="ti-datagrid-body">
+        {grid.rows.map((row, ri) => (
+          <div key={ri} className="ti-datagrid-row"
+               style={{ gridTemplateColumns: `repeat(${grid.columns.length}, minmax(0, 1fr))` }}>
+            {row.map((cell, ci) => (
+              <div key={ci} className="ti-datagrid-cell">
+                {typeof cell === 'object' && cell.tone ? (
+                  <span className={`ti-datagrid-pill ti-tone-${cell.tone}`}>{cell.label}</span>
+                ) : (
+                  <span>{cell}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function MediaPlaceholder({ tone = 200, kind, label, duration }) {
@@ -245,3 +316,5 @@ function BookmarkIcon({ filled }) {
 window.Tile = Tile;
 window.HeartIcon = HeartIcon;
 window.BookmarkIcon = BookmarkIcon;
+window.BarChart = BarChart;
+window.DataGrid = DataGrid;

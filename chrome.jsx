@@ -18,7 +18,10 @@ function TopBar({ mode, setMode, filter, setFilter, view, setView, likedCount, s
       </div>
 
       <div className="ti-top-c">
-        <ModeToggle mode={mode} setMode={setMode} />
+        <ModeToggle mode={mode} setMode={setMode}
+                    hideSocial={t?.hideSocial}
+                    hidePro={t?.hidePro}
+                    hidePrivate={t?.hidePrivate} />
       </div>
 
       <div className="ti-top-r">
@@ -180,17 +183,27 @@ function ViewGlyph({ id }) {
   );
 }
 
-function ModeToggle({ mode, setMode }) {
-  const modes = [
-    { id: 'social', label: 'Social' },
-    { id: 'pro', label: 'Professional' },
-    { id: 'private', label: 'Private' },
+function ModeToggle({ mode, setMode, hideSocial, hidePro, hidePrivate }) {
+  const allModes = [
+    { id: 'social', label: 'Social', hidden: hideSocial },
+    { id: 'pro', label: 'Professional', hidden: hidePro },
+    { id: 'private', label: 'Private', hidden: hidePrivate },
   ];
-  const idx = modes.findIndex(m => m.id === mode);
+  const modes = allModes.filter(m => !m.hidden);
+
+  // if the active mode is hidden, snap to the first visible one
+  useEffect_c(() => {
+    if (modes.length === 0) return;
+    if (!modes.find(m => m.id === mode)) setMode(modes[0].id);
+  }, [hideSocial, hidePro, hidePrivate]);
+
+  if (modes.length <= 1) return null;
+  const idx = Math.max(0, modes.findIndex(m => m.id === mode));
+  const n = modes.length;
   return (
-    <div className="ti-mode-toggle" data-mode={mode}>
+    <div className="ti-mode-toggle" data-mode={mode} data-count={n}>
       <div className="ti-mode-thumb"
-           style={{ left: `calc(4px + ${idx} * (100% - 8px) / 3)`, width: 'calc((100% - 8px) / 3)' }} />
+           style={{ left: `calc(4px + ${idx} * (100% - 8px) / ${n})`, width: `calc((100% - 8px) / ${n})` }} />
       {modes.map(m => (
         <button key={m.id}
                 className={`ti-mode-btn${mode === m.id ? ' is-active' : ''}`}
@@ -323,7 +336,7 @@ function UndoSlot({ tile, expiresAt, onUndo }) {
   const kindLabel = {
     photo: 'photo', video: 'video', text: 'note', audio: 'voice memo',
     live: 'live stream', link: 'link', poll: 'poll',
-    chart: 'chart', table: 'data grid',
+    chart: 'chart', grid: 'data grid',
   }[tile.kind] || 'tile';
 
   return (

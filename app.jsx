@@ -89,6 +89,31 @@ const SEED_TILES = [
     time: '3h', body: 'predicting Arsenal 2-1 tonight. Saka brace, Ødegaard quiet but key.',
     tags: ['sports', 'arsenal', 'football'],
     likes: 91, comments: 34, liked: false, saved: false },
+  { id: 't15', kind: 'chart', mode: 'pro',
+    author: { handle: 'metrics', name: 'Metrics Bot', avatar: 'MB' },
+    time: '40m', caption: 'Q3 weekly active users — up 24% over the quarter',
+    chart: { label: 'WAU · last 8 weeks', unit: 'thousands',
+      data: [
+        { label: 'W1', value: 42 }, { label: 'W2', value: 51 }, { label: 'W3', value: 58 },
+        { label: 'W4', value: 54 }, { label: 'W5', value: 67 }, { label: 'W6', value: 74 },
+        { label: 'W7', value: 81 }, { label: 'W8', value: 92 },
+      ] },
+    tags: ['analytics', 'growth'],
+    likes: 38, comments: 7, liked: false, saved: true },
+  { id: 't16', kind: 'grid', mode: 'pro',
+    author: { handle: 'ops', name: 'Ops Desk', avatar: 'OP' },
+    time: '2h', caption: 'shipping queue · this week',
+    grid: {
+      columns: ['Project', 'Owner', 'Status', 'ETA'],
+      rows: [
+        ['Tiled v2', '@yohan', { label: 'In review', tone: 'warn' }, 'Fri'],
+        ['Pro charts', '@asha', { label: 'Shipped', tone: 'good' }, '—'],
+        ['Mobile shell', '@noor', { label: 'In progress', tone: 'info' }, 'Mon'],
+        ['Onboarding', '@mira', { label: 'Blocked', tone: 'bad' }, 'TBD'],
+      ],
+    },
+    tags: ['ops', 'roadmap'],
+    likes: 21, comments: 4, liked: false, saved: true },
 ];
 
 const SEED_NOTIFICATIONS = [
@@ -417,14 +442,33 @@ function TiledApp({ tweaks }) {
   const handleClearNotifications = () => setNotifications([]);
 
   const handlePost = (kind, body, postTags) => {
+    const isStructured = kind === 'chart' || kind === 'grid';
     const newTile = {
       id: 'new' + Date.now(),
       kind, mode, author: ME, time: 'now',
       body: kind === 'text' ? body : undefined,
-      caption: kind !== 'text' ? body : undefined,
+      caption: (kind !== 'text' && !isStructured) ? body : undefined,
       media: kind === 'photo' ? { tone: 180, label: 'new photo' }
             : kind === 'video' ? { tone: 280, label: 'new video', duration: '0:18' }
             : undefined,
+      chart: kind === 'chart' ? {
+        label: body.trim() || 'Untitled chart',
+        unit: '',
+        data: [
+          { label: 'Mon', value: 32 }, { label: 'Tue', value: 48 },
+          { label: 'Wed', value: 41 }, { label: 'Thu', value: 56 },
+          { label: 'Fri', value: 64 }, { label: 'Sat', value: 38 },
+          { label: 'Sun', value: 29 },
+        ],
+      } : undefined,
+      grid: kind === 'grid' ? {
+        columns: ['Item', 'Owner', 'Status'],
+        rows: [
+          ['Item one', '@you', { label: 'In progress', tone: 'info' }],
+          ['Item two', '@you', { label: 'Shipped', tone: 'good' }],
+          ['Item three', '@you', { label: 'Blocked', tone: 'bad' }],
+        ],
+      } : undefined,
       tags: postTags || [],
       likes: 0, comments: 0, liked: false, saved: false,
       isNew: true,

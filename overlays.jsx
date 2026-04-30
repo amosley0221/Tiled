@@ -190,6 +190,18 @@ function ExpandedBody({ tile, onVote }) {
         <Poll poll={tile.poll} onVote={onVote} />
       </>
     );
+    case 'chart': return (
+      <div className="ti-exp-chart-wrap">
+        <BarChart chart={tile.chart} large />
+        {tile.caption && <p className="ti-exp-caption">{tile.caption}</p>}
+      </div>
+    );
+    case 'grid': return (
+      <div className="ti-exp-grid-wrap">
+        <DataGrid grid={tile.grid} large />
+        {tile.caption && <p className="ti-exp-caption">{tile.caption}</p>}
+      </div>
+    );
     default: return null;
   }
 }
@@ -283,7 +295,16 @@ function Composer({ onClose, onPost, mode, existingTags = [] }) {
     { id: 'audio', label: 'Audio' },
     { id: 'link', label: 'Link' },
     { id: 'poll', label: 'Poll' },
+    ...(mode === 'pro' ? [
+      { id: 'chart', label: 'Chart', proOnly: true },
+      { id: 'grid', label: 'Grid', proOnly: true },
+    ] : []),
   ];
+
+  // if mode flips and current kind is no longer available, fall back to text
+  useEffect_o(() => {
+    if (!kinds.some(k => k.id === kind)) setKind('text');
+  }, [mode]);
 
   const addTag = (raw) => {
     const t = raw.trim().toLowerCase().replace(/^#/, '').replace(/[^\w-]/g, '-');
@@ -331,8 +352,11 @@ function Composer({ onClose, onPost, mode, existingTags = [] }) {
         <div className="ti-composer-kinds">
           {kinds.map(k => (
             <button key={k.id} type="button"
-                    className={`ti-comp-kind${kind === k.id ? ' is-active' : ''}`}
-                    onClick={() => setKind(k.id)}>{k.label}</button>
+                    className={`ti-comp-kind${kind === k.id ? ' is-active' : ''}${k.proOnly ? ' is-pro' : ''}`}
+                    onClick={() => setKind(k.id)}>
+              {k.proOnly && <span className="ti-comp-pro-mark">PRO</span>}
+              {k.label}
+            </button>
           ))}
         </div>
 
@@ -346,13 +370,48 @@ function Composer({ onClose, onPost, mode, existingTags = [] }) {
             : kind === 'video' ? 'Drop a video, or write a caption…'
             : kind === 'audio' ? 'Record audio, or write a caption…'
             : kind === 'link' ? 'Paste a link, or add context…'
-            : 'Write your poll question…'
+            : kind === 'poll' ? 'Write your poll question…'
+            : kind === 'chart' ? 'Title for your chart (e.g. WAU · last 8 weeks)…'
+            : 'Title for your data grid…'
           }
         />
 
-        {kind !== 'text' && (
+        {kind !== 'text' && kind !== 'chart' && kind !== 'grid' && (
           <div className="ti-composer-dropzone">
             <span>{kind === 'photo' ? 'Drop or click to upload photo' : kind === 'video' ? 'Drop or click to upload video' : kind === 'audio' ? 'Tap to record audio' : kind === 'link' ? 'Paste URL above' : 'Add poll options below'}</span>
+          </div>
+        )}
+
+        {kind === 'chart' && (
+          <div className="ti-composer-preview">
+            <div className="ti-composer-preview-lbl">Preview · sample data</div>
+            <BarChart chart={{ label: body.trim() || 'Untitled chart', unit: '',
+              data: [
+                { label: 'Mon', value: 32 }, { label: 'Tue', value: 48 },
+                { label: 'Wed', value: 41 }, { label: 'Thu', value: 56 },
+                { label: 'Fri', value: 64 }, { label: 'Sat', value: 38 },
+                { label: 'Sun', value: 29 },
+              ] }} />
+            <div className="ti-composer-hint">
+              Connect a data source after posting · sample data shown for now.
+            </div>
+          </div>
+        )}
+
+        {kind === 'grid' && (
+          <div className="ti-composer-preview">
+            <div className="ti-composer-preview-lbl">Preview · 3×3 starter</div>
+            <DataGrid grid={{
+              columns: ['Item', 'Owner', 'Status'],
+              rows: [
+                ['Item one', '@you', { label: 'In progress', tone: 'info' }],
+                ['Item two', '@you', { label: 'Shipped', tone: 'good' }],
+                ['Item three', '@you', { label: 'Blocked', tone: 'bad' }],
+              ],
+            }} />
+            <div className="ti-composer-hint">
+              Add or import rows after posting · starter rows shown for now.
+            </div>
           </div>
         )}
 
