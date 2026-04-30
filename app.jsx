@@ -252,6 +252,8 @@ function TiledApp({ tweaks }) {
       if (mode === 'private') return tile.private || tile.author.handle === 'me';
       if (tile.private) return false;
       if (mode === 'pro' && tile.mode !== 'pro') return false;
+      // chart and grid are pro-only kinds — never show them outside Professional
+      if (mode !== 'pro' && (tile.kind === 'chart' || tile.kind === 'grid')) return false;
       if (filter !== 'all' && tile.kind !== filter) return false;
       if (tagFilter && !(tile.tags || []).includes(tagFilter)) return false;
       return true;
