@@ -91,6 +91,36 @@ const SEED_TILES = [
     likes: 91, comments: 34, liked: false, saved: false },
 ];
 
+const SEED_NOTIFICATIONS = [
+  { id: 'n1', kind: 'like', unread: true, time: '2m',
+    actor: { handle: 'mira.jpg', name: 'Mira Okafor', avatar: 'MO' },
+    body: 'liked your photo', preview: 'fog rolling off the bay this morning…' },
+  { id: 'n2', kind: 'comment', unread: true, time: '8m',
+    actor: { handle: 'noahbeats', name: 'Noah Reyes', avatar: 'NR' },
+    body: 'commented on your tile', preview: '"the second drop is filthy 🎛️"' },
+  { id: 'n3', kind: 'follow', unread: true, time: '24m',
+    actor: { handle: 'tessa.w', name: 'Tessa Whitfield', avatar: 'TW' },
+    body: 'started following you' },
+  { id: 'n4', kind: 'mention', unread: false, time: '1h',
+    actor: { handle: 'rune', name: 'Rune Halvorsen', avatar: 'RH' },
+    body: 'mentioned you', preview: '@you nailed the framing on this one.' },
+  { id: 'n5', kind: 'like', unread: false, time: '2h',
+    actor: { handle: 'devon', name: 'Devon Yu', avatar: 'DY' },
+    body: 'liked your text post' },
+  { id: 'n6', kind: 'save', unread: false, time: '3h',
+    actor: { handle: 'iyla', name: 'Iyla Mendes', avatar: 'IM' },
+    body: 'saved your tile for later' },
+  { id: 'n7', kind: 'live', unread: false, time: '4h',
+    actor: { handle: 'kenji.live', name: 'Kenji Park', avatar: 'KP' },
+    body: 'is live — studio session' },
+  { id: 'n8', kind: 'reply', unread: false, time: '6h',
+    actor: { handle: 'lume', name: 'Lume', avatar: 'LU' },
+    body: 'replied to your comment', preview: '"agreed — the bridge needs more space."' },
+  { id: 'n9', kind: 'like', unread: false, time: '1d',
+    actor: { handle: 'asha.r', name: 'Asha Rajan', avatar: 'AR' },
+    body: 'liked your reply' },
+];
+
 const SEED_COMMENTS = {
   t1: [
     { id: 'c1', author: { handle: 'noahbeats', avatar: 'NR' }, time: '8m', body: 'this is unreal. what lens?' },
@@ -164,6 +194,9 @@ function TiledApp({ tweaks }) {
   const [composing, setComposing] = useState(false);
   const [filter, setFilter] = useState('all');
   const [tagFilter, setTagFilter] = useState(null);     // string | null
+  const [notifications, setNotifications] = useState(SEED_NOTIFICATIONS);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifOrigin, setNotifOrigin] = useState(null);
 
   const accentCSS = useMemo(() => ({
     gold: 'oklch(0.82 0.13 78)',
@@ -372,6 +405,17 @@ function TiledApp({ tweaks }) {
     }));
   };
 
+  const handleOpenNotifications = (rect) => {
+    setNotifOrigin(rect || null);
+    setNotifOpen(true);
+    // mark all as read on open
+    setNotifications(prev => prev.map(n => n.unread ? { ...n, unread: false } : n));
+  };
+  const handleDismissNotification = (id) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  };
+  const handleClearNotifications = () => setNotifications([]);
+
   const handlePost = (kind, body, postTags) => {
     const newTile = {
       id: 'new' + Date.now(),
@@ -405,6 +449,8 @@ function TiledApp({ tweaks }) {
               onCompose={() => setComposing(true)}
               onProfile={() => { setOnProfile(p => !p); setView('feed'); }}
               isOnProfile={onProfile}
+              onNotifications={handleOpenNotifications}
+              notifUnread={notifications.filter(n => n.unread).length}
               t={t} />
 
       <main className="ti-main" data-density={t.density} ref={mainRef}>
@@ -467,6 +513,14 @@ function TiledApp({ tweaks }) {
                      comments={comments[commentRail] || []}
                      onClose={() => setCommentRail(null)}
                      onComment={(body) => handleAddComment(commentRail, body)} />
+      )}
+
+      {notifOpen && (
+        <NotificationsPanel notifications={notifications}
+                            originRect={notifOrigin}
+                            onClose={() => setNotifOpen(false)}
+                            onDismiss={handleDismissNotification}
+                            onClearAll={handleClearNotifications} />
       )}
 
       {composing && (

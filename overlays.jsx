@@ -401,6 +401,215 @@ function Composer({ onClose, onPost, mode, existingTags = [] }) {
   );
 }
 
+function NotificationsPanel({ notifications, originRect, onClose, onDismiss, onClearAll }) {
+  const [phase, setPhase] = useState_o('opening');
+  const panelRef = useRef_o(null);
+  const bgRef = useRef_o(null);
+
+  useEffect_o(() => {
+    const onKey = (e) => { if (e.key === 'Escape') handleClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // FLIP: snap to origin rect (the bell button), then release to natural size.
+  useEffect_o(() => {
+    const el = panelRef.current;
+    if (!el) return;
+    if (originRect) {
+      const final = el.getBoundingClientRect();
+      const dx = originRect.left + originRect.width / 2 - (final.left + final.width / 2);
+      const dy = originRect.top + originRect.height / 2 - (final.top + final.height / 2);
+      const sx = originRect.width / final.width;
+      const sy = originRect.height / final.height;
+      el.style.transformOrigin = 'center center';
+      el.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
+      el.style.opacity = '0.4';
+      el.getBoundingClientRect();
+      requestAnimationFrame(() => {
+        el.style.transition = 'transform .38s cubic-bezier(.2,.8,.2,1), opacity .26s ease-out';
+        el.style.transform = 'translate(0,0) scale(1,1)';
+        el.style.opacity = '1';
+      });
+      const done = () => { setPhase('open'); el.style.transition = ''; el.removeEventListener('transitionend', done); };
+      el.addEventListener('transitionend', done);
+    } else {
+      setPhase('open');
+    }
+  }, []);
+
+  const handleClose = () => {
+    const el = panelRef.current;
+    if (!el || !originRect) { onClose(); return; }
+    const final = el.getBoundingClientRect();
+    const dx = originRect.left + originRect.width / 2 - (final.left + final.width / 2);
+    const dy = originRect.top + originRect.height / 2 - (final.top + final.height / 2);
+    const sx = originRect.width / final.width;
+    const sy = originRect.height / final.height;
+    setPhase('closing');
+    el.style.transition = 'transform .3s cubic-bezier(.4,0,.2,1), opacity .26s ease-in';
+    el.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
+    el.style.opacity = '0';
+    if (bgRef.current) {
+      bgRef.current.style.transition = 'opacity .26s ease-in';
+      bgRef.current.style.opacity = '0';
+    }
+    setTimeout(onClose, 280);
+  };
+
+  return (
+    <div className={`ti-overlay ti-notif-overlay ti-overlay-anim is-${phase}`} onClick={handleClose}>
+      <div className="ti-overlay-bg ti-notif-bg" ref={bgRef} />
+      <div className="ti-notif-panel" ref={panelRef} onClick={(e) => e.stopPropagation()}>
+        <div className="ti-gloss" />
+        <div className="ti-gloss-edge" />
+
+        <header className="ti-notif-hd">
+          <div className="ti-notif-title-wrap">
+            <div className="ti-notif-eyebrow">Inbox</div>
+            <h2 className="ti-notif-title">Notifications</h2>
+          </div>
+          <div className="ti-notif-hd-actions">
+            {notifications.length > 0 && (
+              <button className="ti-notif-clear" onClick={onClearAll}>Clear all</button>
+            )}
+            <button className="ti-x ti-notif-x" onClick={handleClose} aria-label="close">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7">
+                <path d="m6 6 12 12M6 18 18 6"/>
+              </svg>
+            </button>
+          </div>
+        </header>
+
+        <div className="ti-notif-list">
+          {notifications.length === 0 ? (
+            <div className="ti-notif-empty">
+              <div className="ti-empty-mark"><span /><span /><span /><span /></div>
+              <div className="ti-notif-empty-msg">You're all caught up.</div>
+              <div className="ti-notif-empty-sub">New activity will appear here.</div>
+            </div>
+          ) : (
+            notifications.map(n => (
+              <NotificationItem key={n.id} n={n} onDismiss={() => onDismiss(n.id)} />
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NotificationItem({ n, onDismiss }) {
+  const [drag, setDrag] = useState_o({ x: 0, dragging: false });
+  const startRef = useRef_o(0);
+  const elRef = useRef_o(null);
+
+  const onPointerDown = (e) => {
+    if (e.target.closest('.ti-no-drag')) return;
+    startRef.current = e.clientX;
+    setDrag({ x: 0, dragging: true });
+    elRef.current.setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e) => {
+    if (!drag.dragging) return;
+    setDrag(d => ({ ...d, x: e.clientX - startRef.current }));
+  };
+  const onPointerUp = () => {
+    if (!drag.dragging) return;
+    const dx = drag.x;
+    if (Math.abs(dx) > 90) {
+      setDrag({ x: dx > 0 ? 600 : -600, dragging: false });
+      setTimeout(onDismiss, 200);
+    } else {
+      setDrag({ x: 0, dragging: false });
+    }
+  };
+
+  const opacity = 1 - Math.min(0.7, Math.abs(drag.x) / 360);
+  const dismissHint = Math.abs(drag.x) > 30;
+
+  return (
+    <article ref={elRef}
+      className={`ti-notif-item ti-kind-${n.kind}${n.unread ? ' is-unread' : ''}`}
+      style={{
+        transform: `translateX(${drag.x}px)`,
+        opacity,
+        transition: drag.dragging ? 'none' : 'transform .26s cubic-bezier(.2,.7,.3,1), opacity .26s',
+      }}
+      onPointerDown={onPointerDown} onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp} onPointerCancel={onPointerUp}>
+      <div className="ti-gloss" />
+      {dismissHint && (
+        <div className="ti-notif-dismiss-hint" style={{ opacity: Math.min(1, Math.abs(drag.x) / 90) }}>
+          {drag.x > 0 ? 'dismiss →' : '← dismiss'}
+        </div>
+      )}
+      {n.unread && <span className="ti-notif-unread-dot" />}
+      <div className="ti-notif-avatar-wrap">
+        <div className="ti-avatar ti-notif-avatar">{n.actor.avatar}</div>
+        <span className={`ti-notif-glyph ti-notif-glyph-${n.kind}`}>
+          <NotifGlyph kind={n.kind} />
+        </span>
+      </div>
+      <div className="ti-notif-body">
+        <div className="ti-notif-line">
+          <span className="ti-notif-actor">{n.actor.name}</span>
+          <span className="ti-notif-action"> {n.body}</span>
+        </div>
+        {n.preview && <div className="ti-notif-preview">{n.preview}</div>}
+        <div className="ti-notif-meta">
+          <span className="ti-notif-handle">@{n.actor.handle}</span>
+          <span className="ti-notif-dot">·</span>
+          <span className="ti-notif-time">{n.time}</span>
+        </div>
+      </div>
+      <button className="ti-notif-x ti-no-drag" onClick={(e) => { e.stopPropagation(); onDismiss(); }} aria-label="dismiss notification">
+        <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <path d="m6 6 12 12M6 18 18 6"/>
+        </svg>
+      </button>
+    </article>
+  );
+}
+
+function NotifGlyph({ kind }) {
+  if (kind === 'like') return (
+    <svg viewBox="0 0 12 12" width="9" height="9" fill="currentColor">
+      <path d="M6 10.5s-3.7-2.4-4.9-4.7C.5 4.3 1.6 2.4 3.4 2.4c1 0 1.7.5 2.6 1.5.9-1 1.6-1.5 2.6-1.5 1.8 0 2.9 1.9 2.3 3.4C9.7 8.1 6 10.5 6 10.5z"/>
+    </svg>
+  );
+  if (kind === 'comment' || kind === 'reply') return (
+    <svg viewBox="0 0 12 12" width="9" height="9" fill="none" stroke="currentColor" strokeWidth="1.4">
+      <path d="M10.5 6c0 2-2 3.5-4.5 3.5-.6 0-1.2-.1-1.7-.3L2 10l.6-1.7C1.9 7.6 1.5 6.8 1.5 6c0-2 2-3.5 4.5-3.5s4.5 1.5 4.5 3.5z"/>
+    </svg>
+  );
+  if (kind === 'follow') return (
+    <svg viewBox="0 0 12 12" width="9" height="9" fill="none" stroke="currentColor" strokeWidth="1.4">
+      <circle cx="5" cy="4" r="1.8"/>
+      <path d="M1.5 10.5c.5-1.6 1.8-2.5 3.5-2.5s3 .9 3.5 2.5"/>
+      <path d="M9.5 4v3M8 5.5h3"/>
+    </svg>
+  );
+  if (kind === 'mention') return (
+    <svg viewBox="0 0 12 12" width="9" height="9" fill="none" stroke="currentColor" strokeWidth="1.4">
+      <circle cx="6" cy="6" r="1.8"/>
+      <path d="M7.8 6v1.2c0 .8.6 1.3 1.3 1.1.7-.2 1-.9 1-1.8 0-2.6-2-4.5-4.5-4.5S1.5 3.4 1.5 6 3.4 10.5 6 10.5c1 0 1.9-.3 2.6-.8"/>
+    </svg>
+  );
+  if (kind === 'save') return (
+    <svg viewBox="0 0 12 12" width="9" height="9" fill="currentColor">
+      <path d="M3 2h6v8.5L6 8.7 3 10.5z"/>
+    </svg>
+  );
+  if (kind === 'live') return (
+    <svg viewBox="0 0 12 12" width="9" height="9" fill="currentColor">
+      <circle cx="6" cy="6" r="2.5"/>
+    </svg>
+  );
+  return null;
+}
+
 window.ExpandedTile = ExpandedTile;
 window.CommentRail = CommentRail;
 window.Composer = Composer;
+window.NotificationsPanel = NotificationsPanel;

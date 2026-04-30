@@ -2,7 +2,12 @@
 
 const { useState: useState_c, useEffect: useEffect_c, useRef: useRef_c } = React;
 
-function TopBar({ mode, setMode, filter, setFilter, view, setView, likedCount, savedCount, onCompose, onProfile, isOnProfile, allTags, tagFilter, setTagFilter, t }) {
+function TopBar({ mode, setMode, filter, setFilter, view, setView, likedCount, savedCount, onCompose, onProfile, isOnProfile, allTags, tagFilter, setTagFilter, onNotifications, notifUnread, t }) {
+  const notifBtnRef = useRef_c(null);
+  const handleBell = () => {
+    const r = notifBtnRef.current?.getBoundingClientRect();
+    onNotifications(r ? { top: r.top, left: r.left, width: r.width, height: r.height } : null);
+  };
   return (
     <header className="ti-top">
       <div className="ti-top-l">
@@ -19,11 +24,13 @@ function TopBar({ mode, setMode, filter, setFilter, view, setView, likedCount, s
       <div className="ti-top-r">
         <FilterPill filter={filter} setFilter={setFilter} />
         <SearchPopover allTags={allTags} tagFilter={tagFilter} setTagFilter={setTagFilter} />
-        <button className="ti-icn-btn" aria-label="notifications">
+        <button ref={notifBtnRef} className="ti-icn-btn ti-bell" aria-label="notifications" onClick={handleBell}>
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.6">
             <path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15L6 16zM10 20a2 2 0 0 0 4 0"/>
           </svg>
-          <span className="ti-icn-dot" />
+          {notifUnread > 0 && (
+            <span className="ti-icn-badge">{notifUnread > 9 ? '9+' : notifUnread}</span>
+          )}
         </button>
         <button className="ti-compose" onClick={onCompose}>
           <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2">
