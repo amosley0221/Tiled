@@ -441,7 +441,7 @@ function TagBar({ tags, active, onPick }) {
   );
 }
 
-function UndoSlot({ tile, expiresAt, onUndo }) {
+function UndoSlot({ tile, expiresAt, onUndo, variant }) {
   const remainingMs = Math.max(0, expiresAt - Date.now());
   const remainingSec = Math.ceil(remainingMs / 1000);
   const totalMs = 5000;
@@ -453,19 +453,29 @@ function UndoSlot({ tile, expiresAt, onUndo }) {
     chart: 'chart', grid: 'data grid',
   }[tile.kind] || 'tile';
 
+  const isDelete = variant === 'delete';
+
   return (
-    <div className="ti-undo-slot ti-no-drag">
+    <div className={`ti-undo-slot ti-no-drag${isDelete ? ' ti-undo-slot-delete' : ''}`}>
       <div className="ti-gloss" />
       <div className="ti-gloss-edge" />
       <div className="ti-undo-slot-progress" style={{ transform: `scaleX(${progress})` }} />
       <div className="ti-undo-slot-inner">
         <div className="ti-undo-slot-icn">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.6">
-            <path d="M3 10h11a5 5 0 0 1 0 10h-2"/><path d="m7 6-4 4 4 4"/>
-          </svg>
+          {isDelete ? (
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.6">
+              <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.6">
+              <path d="M3 10h11a5 5 0 0 1 0 10h-2"/><path d="m7 6-4 4 4 4"/>
+            </svg>
+          )}
         </div>
         <div className="ti-undo-slot-body">
-          <div className="ti-undo-slot-eyebrow">Hidden · clearing in {remainingSec}s</div>
+          <div className="ti-undo-slot-eyebrow">
+            {isDelete ? 'Deleted' : 'Hidden'} · {isDelete ? 'removing' : 'clearing'} in {remainingSec}s
+          </div>
           <div className="ti-undo-slot-line">
             <span>{kindLabel} from </span>
             <b>@{tile.author.handle}</b>

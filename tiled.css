@@ -31,7 +31,11 @@ html, body {
 }
 body { overflow-x: hidden; }
 
-button { font-family: inherit; }
+button {
+  font-family: inherit;
+  touch-action: manipulation;          /* kill the iOS double-tap-zoom delay */
+  -webkit-tap-highlight-color: rgba(255,255,255,0.04);
+}
 
 /* ───── root with subtle vignette ───── */
 .ti-root {
@@ -1803,6 +1807,17 @@ button { font-family: inherit; }
     inset 0 1px 0 rgba(255,255,255,calc(0.06 * var(--gloss))),
     0 4px 18px rgba(0,0,0,0.4);
   animation: undoSlotIn 0.32s cubic-bezier(.2,.7,.3,1);
+}
+.ti-undo-slot-delete {
+  border-color: color-mix(in oklch, oklch(0.7 0.16 25) 35%, transparent);
+}
+.ti-undo-slot-delete .ti-undo-slot-progress {
+  background: linear-gradient(90deg,
+    color-mix(in oklch, oklch(0.7 0.16 25) 60%, transparent) 0%,
+    oklch(0.7 0.16 25) 100%) !important;
+}
+.ti-undo-slot-delete .ti-undo-slot-icn {
+  color: oklch(0.85 0.16 25);
 }
 @keyframes undoSlotIn {
   from { opacity: 0; transform: scale(0.96); }

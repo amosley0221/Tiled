@@ -6,7 +6,6 @@ function ExpandedTile({ tile, comments, onClose, onLike, onSave, onDelete, onCom
   const isAuthor = me && tile.author && me.handle === tile.author.handle;
   const isStaff = me && (me.role === 'admin' || me.role === 'owner');
   const canDelete = isAuthor || isStaff;
-  const [confirmingDelete, setConfirmingDelete] = useState_o(false);
   const [draft, setDraft] = useState_o('');
   const [phase, setPhase] = useState_o('opening'); // 'opening' | 'open' | 'closing'
   const expandedRef = useRef_o(null);
@@ -100,9 +99,9 @@ function ExpandedTile({ tile, comments, onClose, onLike, onSave, onDelete, onCom
               </div>
             </div>
             <div className="ti-expanded-hd-actions">
-              {canDelete && !confirmingDelete && (
+              {canDelete && (
                 <button className="ti-expanded-delete"
-                        onClick={() => setConfirmingDelete(true)}
+                        onClick={() => { onClose(); onDelete && onDelete(); }}
                         aria-label={isAuthor ? 'Delete tile' : 'Remove tile'}>
                   <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6">
                     <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>
@@ -110,19 +109,7 @@ function ExpandedTile({ tile, comments, onClose, onLike, onSave, onDelete, onCom
                   <span>{isAuthor ? 'Delete' : 'Remove'}</span>
                 </button>
               )}
-              {canDelete && confirmingDelete && (
-                <>
-                  <button type="button" className="ti-tile-menu-cancel"
-                          onClick={() => setConfirmingDelete(false)}>
-                    Cancel
-                  </button>
-                  <button type="button" className="ti-expanded-delete ti-expanded-delete-confirm"
-                          onClick={() => { setConfirmingDelete(false); onDelete && onDelete(); }}>
-                    {isAuthor ? 'Confirm delete' : 'Confirm remove'}
-                  </button>
-                </>
-              )}
-              {!isAuthor && !confirmingDelete && <button className="ti-follow">Follow</button>}
+              {!isAuthor && <button className="ti-follow">Follow</button>}
             </div>
           </header>
 

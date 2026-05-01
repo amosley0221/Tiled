@@ -126,6 +126,8 @@ function TiledApp({ tweaks }) {
   const [followerIds, setFollowerIds] = useState(new Set());    // who follows me
   const [editProfileOpen, setEditProfileOpen] = useState(false);
   const [followListOpen, setFollowListOpen] = useState(null);   // 'followers' | 'following' | null
+  const [pendingDelete, setPendingDelete] = useState({});       // { [tileId]: expiresAt }
+  const deleteTimers = useRef({});
   const [viewingProfileId, setViewingProfileId] = useState(null); // null = my profile (or off-profile)
   const [viewedProfile, setViewedProfile] = useState(null);       // profile_stats row when viewing another user
   const [viewedProfileLoading, setViewedProfileLoading] = useState(false);
@@ -339,13 +341,14 @@ function TiledApp({ tweaks }) {
     });
   }, [tiles, mode, filter, tagFilter, userFilter, view, onProfile, viewingProfileId, ME.handle]);
 
-  // garbage-collect expired pending dismissals every 500ms (drives the countdown UI)
+  // tick at 250ms while there are pending dismissals or deletes — drives
+  // the countdown text in UndoSlot
   const [, forceTick] = useState(0);
   useEffect(() => {
-    if (Object.keys(pendingDismiss).length === 0) return;
+    if (Object.keys(pendingDismiss).length === 0 && Object.keys(pendingDelete).length === 0) return;
     const id = setInterval(() => forceTick(n => n + 1), 250);
     return () => clearInterval(id);
-  }, [pendingDismiss]);
+  }, [pendingDismiss, pendingDelete]);
 
   const handleDismiss = (id) => {
     if (pendingDismiss[id]) return;
@@ -614,31 +617,42 @@ function TiledApp({ tweaks }) {
     return { ok: true };
   };
 
-  // ─── Delete tile — author or admin/owner
-  const handleDeleteTile = async (id) => {
+  // ─── Delete tile — single-tap UX with 5s undo. The tile is replaced
+  // by an UndoSlot in place (same pattern as swipe-to-dismiss), and
+  // only commits to the DB after the timer expires.
+  const handleDeleteTile = (id) => {
     if (!supabase || !ME?.id) return;
     const tile = tiles.find(x => x.id === id);
     if (!tile) return;
     const isAuthor = tile.author?.handle === ME.handle;
     const isStaff = ME.role === 'admin' || ME.role === 'owner';
     if (!isAuthor && !isStaff) return;
-    // close any open overlay tied to this tile
+    if (pendingDelete[id]) return;
     if (expanded === id) setExpanded(null);
     if (commentRail === id) setCommentRail(null);
-    // optimistic remove
-    setTiles(prev => prev.filter(x => x.id !== id));
-    setComments(prev => {
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
-    const { error } = await supabase.from('tiles').delete().eq('id', id);
-    if (error) {
-      console.warn('[tiled] delete failed:', error.message);
-      // revert by refetch
-      await loadFeed({ silent: true });
-    }
+
+    setPendingDelete(prev => ({ ...prev, [id]: Date.now() + 5000 }));
+    deleteTimers.current[id] = setTimeout(async () => {
+      setTiles(prev => prev.filter(x => x.id !== id));
+      setComments(prev => { const next = { ...prev }; delete next[id]; return next; });
+      setPendingDelete(prev => { const next = { ...prev }; delete next[id]; return next; });
+      delete deleteTimers.current[id];
+      const { error } = await supabase.from('tiles').delete().eq('id', id);
+      if (error) {
+        console.warn('[tiled] delete failed:', error.message);
+        await loadFeed({ silent: true });
+      }
+    }, 5000);
   };
+
+  const handleUndoDelete = (id) => {
+    if (deleteTimers.current[id]) {
+      clearTimeout(deleteTimers.current[id]);
+      delete deleteTimers.current[id];
+    }
+    setPendingDelete(prev => { const next = { ...prev }; delete next[id]; return next; });
+  };
+
 
   // ─── Save — same shape as like
   const handleSave = async (id) => {
@@ -902,7 +916,12 @@ function TiledApp({ tweaks }) {
           ) : (
             <>
               {visibleTiles.map(tile => (
-                pendingDismiss[tile.id] ? (
+                pendingDelete[tile.id] ? (
+                  <UndoSlot key={tile.id} tile={tile}
+                            expiresAt={pendingDelete[tile.id]}
+                            onUndo={() => handleUndoDelete(tile.id)}
+                            variant="delete" />
+                ) : pendingDismiss[tile.id] ? (
                   <UndoSlot key={tile.id} tile={tile}
                             expiresAt={pendingDismiss[tile.id]}
                             onUndo={() => handleUndo(tile.id)} />
