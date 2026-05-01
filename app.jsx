@@ -2,7 +2,8 @@
 
 const { useState, useEffect, useRef, useMemo } = React;
 
-const ME = { handle: 'you', name: 'You', avatar: 'YO' };
+// stable fallback used only on the very first render before AuthGate mounts
+const ME_FALLBACK = { handle: 'you', name: 'You', avatar: 'YO' };
 
 const SEED_TILES = [
   { id: 't1', kind: 'photo', mode: 'social',
@@ -74,7 +75,7 @@ const SEED_TILES = [
     tags: ['design', 'industrial'],
     likes: 256, comments: 31, liked: false, saved: true },
   { id: 't12', kind: 'text', mode: 'private',
-    author: { handle: 'me', name: 'You', avatar: 'YO' },
+    author: { handle: 'yohan', name: 'Yohan Olivier', avatar: 'YO' },
     time: '2d', body: 'note to self — outline for the talk. start with the question, not the framework.',
     tags: ['notes'],
     likes: 0, comments: 0, liked: false, saved: false, private: true },
@@ -202,6 +203,11 @@ const INCOMING_POOL = [
 
 function TiledApp({ tweaks }) {
   const t = tweaks;
+  const auth = useAuth();
+  const ME = useMemo(() => auth?.currentUser
+    ? { handle: auth.currentUser.username, name: auth.currentUser.name, avatar: auth.currentUser.avatar, role: auth.currentUser.role, email: auth.currentUser.email, bio: auth.currentUser.bio, createdAt: auth.currentUser.createdAt }
+    : ME_FALLBACK,
+  [auth?.currentUser]);
   const [mode, setMode] = useState('social');
   const [view, setView] = useState('feed');             // feed | liked | saved (only used in profile)
   const [onProfile, setOnProfile] = useState(false);    // is profile page active?
@@ -246,10 +252,10 @@ function TiledApp({ tweaks }) {
         if (view === 'liked') return tile.liked && !tile.private;
         if (view === 'saved') return tile.saved && !tile.private;
         // 'feed' on profile === their own posts
-        return tile.author.handle === 'me';
+        return tile.author.handle === ME.handle;
       }
 
-      if (mode === 'private') return tile.private || tile.author.handle === 'me';
+      if (mode === 'private') return tile.private && tile.author.handle === ME.handle;
       if (tile.private) return false;
       if (mode === 'pro' && tile.mode !== 'pro') return false;
       // chart and grid are pro-only kinds — never show them outside Professional
@@ -258,7 +264,7 @@ function TiledApp({ tweaks }) {
       if (tagFilter && !(tile.tags || []).includes(tagFilter)) return false;
       return true;
     });
-  }, [tiles, mode, filter, tagFilter, view, onProfile]);
+  }, [tiles, mode, filter, tagFilter, view, onProfile, ME.handle]);
 
   // garbage-collect expired pending dismissals every 500ms (drives the countdown UI)
   const [, forceTick] = useState(0);
@@ -497,6 +503,7 @@ function TiledApp({ tweaks }) {
               isOnProfile={onProfile}
               onNotifications={handleOpenNotifications}
               notifUnread={notifications.filter(n => n.unread).length}
+              user={ME}
               t={t} />
 
       <main className="ti-main" data-density={t.density} ref={mainRef}>
@@ -510,7 +517,9 @@ function TiledApp({ tweaks }) {
             view={view} setView={setView}
             likedCount={tiles.filter(x => x.liked && !x.private).length}
             savedCount={tiles.filter(x => x.saved && !x.private).length}
-            postCount={tiles.filter(x => x.author.handle === 'me').length}
+            postCount={tiles.filter(x => x.author.handle === ME.handle).length}
+            user={ME}
+            onLogout={auth?.logout}
             mode={mode} />
         ) : (
           <FeedHeader mode={mode} view={view} count={visibleTiles.length}

@@ -2,7 +2,7 @@
 
 const { useState: useState_c, useEffect: useEffect_c, useRef: useRef_c } = React;
 
-function TopBar({ mode, setMode, filter, setFilter, view, setView, likedCount, savedCount, onCompose, onProfile, isOnProfile, allTags, tagFilter, setTagFilter, onNotifications, notifUnread, t }) {
+function TopBar({ mode, setMode, filter, setFilter, view, setView, likedCount, savedCount, onCompose, onProfile, isOnProfile, allTags, tagFilter, setTagFilter, onNotifications, notifUnread, user, t }) {
   const notifBtnRef = useRef_c(null);
   const handleBell = () => {
     const r = notifBtnRef.current?.getBoundingClientRect();
@@ -41,7 +41,10 @@ function TopBar({ mode, setMode, filter, setFilter, view, setView, likedCount, s
           </svg>
           <span>Post</span>
         </button>
-        <button className={`ti-me${isOnProfile ? ' is-active' : ''}`} onClick={onProfile} aria-label="profile">YO</button>
+        <button className={`ti-me${isOnProfile ? ' is-active' : ''}${user?.role === 'owner' ? ' is-owner' : user?.role === 'admin' ? ' is-admin' : ''}`}
+                onClick={onProfile} aria-label="profile" title={user?.name || 'Profile'}>
+          {user?.avatar || 'YO'}
+        </button>
       </div>
     </header>
   );
@@ -403,18 +406,31 @@ function ModeIndicator({ mode, view }) {
   return <div className="ti-mode-indicator" data-mode={mode}>{text}</div>;
 }
 
-function ProfileHeader({ user, view, setView, likedCount, savedCount, postCount, mode }) {
+function ProfileHeader({ user, view, setView, likedCount, savedCount, postCount, mode, onLogout }) {
+  const u = user || {};
+  const role = u.role || 'user';
+  const joined = (() => {
+    // crude formatter — we only have ISO from auth.jsx
+    if (!u.createdAt) return 'recently';
+    try {
+      const d = new Date(u.createdAt);
+      return d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    } catch (e) { return 'recently'; }
+  })();
   return (
-    <section className="ti-profile">
+    <section className={`ti-profile ti-role-${role}`}>
       <div className="ti-gloss" />
       <div className="ti-gloss-edge" />
       <div className="ti-profile-bg" />
       <div className="ti-profile-row">
-        <div className="ti-profile-avatar">YO</div>
+        <div className={`ti-profile-avatar ti-role-ring-${role}`}>{u.avatar || 'YO'}</div>
         <div className="ti-profile-meta">
-          <div className="ti-profile-name">Yohan Olivier</div>
-          <div className="ti-profile-handle">@yohan · joined March 2024</div>
-          <div className="ti-profile-bio">Designer, sometimes photographer. Currently in {mode} mode.</div>
+          <div className="ti-profile-name">
+            {u.name || 'You'}
+            {role !== 'user' && <RoleBadge role={role} />}
+          </div>
+          <div className="ti-profile-handle">@{u.handle || 'you'} · joined {joined}</div>
+          <div className="ti-profile-bio">{u.bio || `Currently in ${mode} mode.`}</div>
           <div className="ti-profile-stats">
             <span><strong>{postCount}</strong> tiles</span>
             <span className="ti-profile-stat-sep" />
@@ -423,13 +439,49 @@ function ProfileHeader({ user, view, setView, likedCount, savedCount, postCount,
             <span><strong>312</strong> following</span>
           </div>
         </div>
-        <button className="ti-profile-edit">Edit profile</button>
+        <div className="ti-profile-actions">
+          <button className="ti-profile-edit">Edit profile</button>
+          {onLogout && (
+            <button className="ti-profile-logout" onClick={onLogout}>
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6">
+                <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/>
+                <path d="M10 17l-5-5 5-5"/>
+                <path d="M5 12h12"/>
+              </svg>
+              <span>Sign out</span>
+            </button>
+          )}
+        </div>
       </div>
       <div className="ti-profile-toggle-row">
         <ViewToggle view={view} setView={setView} likedCount={likedCount} savedCount={savedCount} />
       </div>
     </section>
   );
+}
+
+function RoleBadge({ role }) {
+  if (role === 'owner') {
+    return (
+      <span className="ti-role-badge ti-role-badge-owner" title="Owner">
+        <svg viewBox="0 0 16 16" width="11" height="11" fill="currentColor">
+          <path d="M2 5l3 3 3-5 3 5 3-3-1 8H3z"/>
+        </svg>
+        <span>Owner</span>
+      </span>
+    );
+  }
+  if (role === 'admin') {
+    return (
+      <span className="ti-role-badge ti-role-badge-admin" title="Admin">
+        <svg viewBox="0 0 16 16" width="11" height="11" fill="currentColor">
+          <path d="M8 1l6 2v5c0 4-3 6.5-6 7-3-.5-6-3-6-7V3z"/>
+        </svg>
+        <span>Admin</span>
+      </span>
+    );
+  }
+  return null;
 }
 
 window.ProfileHeader = ProfileHeader;
