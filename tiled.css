@@ -436,6 +436,20 @@ button { font-family: inherit; }
 }
 @media (max-width: 600px) {
   .ti-grid, .ti-grid[data-density="compact"] { grid-template-columns: 1fr; }
+
+  /* Tile-by-tile snap scrolling on phones (Reels-style). Each tile is a
+     snap point; momentum still works inside the feed but stops on the
+     next tile rather than blowing past several. The feed/profile header
+     above the grid scrolls normally before the first tile locks in. */
+  .ti-main {
+    scroll-snap-type: y mandatory;
+    scroll-padding-top: 16px;
+  }
+  .ti-grid > .ti-tile,
+  .ti-grid > .ti-undo-slot {
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+  }
 }
 
 /* ───── tile ───── */
