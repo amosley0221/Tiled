@@ -1,35 +1,17 @@
-// auth.jsx — client-side auth for the Tiled prototype
+// auth.jsx — Supabase-backed auth for Tiled
 //
-// IMPORTANT: this is a UI prototype. Users + passwords are stored in
-// localStorage in plaintext. A real production app must do auth server-side
-// with bcrypt/argon2 hashing, secure sessions, rate limiting, and password
-// reset flows. Do not ship this as-is to anything that handles real users.
+// Sessions live on Supabase's servers. The token is cached locally so
+// reloading doesn't kick the user out:
+//   - "Stay signed in" CHECKED   → token in localStorage (survives close)
+//   - "Stay signed in" UNCHECKED → token in sessionStorage (cleared on close)
+// The dynamic storage adapter below switches between the two right before
+// each auth call.
 
 const { useState: useState_a, useEffect: useEffect_a, useMemo: useMemo_a, createContext: createContext_a, useContext: useContext_a } = React;
 
-const AUTH_USERS_KEY = 'tiled.users.v1';
-const AUTH_SESSION_KEY = 'tiled.session.v1';
-
-// roles
 const ROLE_OWNER = 'owner';
 const ROLE_ADMIN = 'admin';
 const ROLE_USER  = 'user';
-
-// seeded built-in accounts so the prototype is testable without signup
-const SEED_USERS = [
-  {
-    username: 'yohan', email: 'yohan@tiled.app', password: 'Yohan2026!',
-    name: 'Yohan Olivier', avatar: 'YO', role: ROLE_OWNER,
-    bio: 'Designer, sometimes photographer. Founder of Tiled.',
-    createdAt: '2024-03-12T00:00:00Z',
-  },
-  {
-    username: 'asha', email: 'asha@tiled.app', password: 'Admin2026!',
-    name: 'Asha Rajan', avatar: 'AR', role: ROLE_ADMIN,
-    bio: 'Operations & moderation. Keeping the feed civilized.',
-    createdAt: '2024-04-04T00:00:00Z',
-  },
-];
 
 const PASSWORD_RULES = [
   { id: 'length',  label: 'At least 8 characters', test: (p) => p.length >= 8 },
@@ -44,64 +26,128 @@ function passwordValid(p) {
   return PASSWORD_RULES.every(r => r.test(p));
 }
 
-function loadUsers() {
-  try {
-    const raw = localStorage.getItem(AUTH_USERS_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch (e) { /* ignore */ }
-  // first run — seed
-  localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(SEED_USERS));
-  return SEED_USERS;
-}
-function saveUsers(users) {
-  localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(users));
-}
-// Sessions can be persistent (localStorage — survives browser close) or
-// ephemeral (sessionStorage — cleared on browser close). On read, a
-// remembered session takes priority, then the per-tab session is checked.
-function loadSession() {
-  try {
-    return localStorage.getItem(AUTH_SESSION_KEY) ||
-           sessionStorage.getItem(AUTH_SESSION_KEY) || null;
-  } catch (e) { return null; }
-}
-function saveSession(emailLower, remember) {
-  try {
-    localStorage.removeItem(AUTH_SESSION_KEY);
-    sessionStorage.removeItem(AUTH_SESSION_KEY);
-  } catch (e) { /* ignore */ }
-  if (!emailLower) return;
-  try {
-    if (remember) localStorage.setItem(AUTH_SESSION_KEY, emailLower);
-    else sessionStorage.setItem(AUTH_SESSION_KEY, emailLower);
-  } catch (e) { /* ignore */ }
-}
+// ─── dynamic storage: localStorage when "remember", sessionStorage otherwise
+const sessionMode = { remember: true };
+const dynamicStorage = {
+  getItem: (key) => {
+    try {
+      const v = localStorage.getItem(key);
+      if (v !== null) return v;
+      return sessionStorage.getItem(key);
+    } catch (e) { return null; }
+  },
+  setItem: (key, value) => {
+    try {
+      if (sessionMode.remember) {
+        localStorage.setItem(key, value);
+        sessionStorage.removeItem(key);
+      } else {
+        sessionStorage.setItem(key, value);
+        localStorage.removeItem(key);
+      }
+    } catch (e) { /* ignore quota / private mode */ }
+  },
+  removeItem: (key) => {
+    try { localStorage.removeItem(key); sessionStorage.removeItem(key); } catch (e) { /* ignore */ }
+  },
+};
+
+// initialize the supabase client once
+const supabase = (window.supabase && window.SUPABASE_URL && window.SUPABASE_KEY)
+  ? window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_KEY, {
+      auth: {
+        storage: dynamicStorage,
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: false,
+      },
+    })
+  : null;
+// expose for the rest of the app
+window.supabaseClient = supabase;
 
 const AuthContext = createContext_a(null);
 function useAuth() { return useContext_a(AuthContext); }
 
 function AuthProvider({ children }) {
-  const [users, setUsers] = useState_a(() => loadUsers());
-  const [sessionEmail, setSessionEmail] = useState_a(() => loadSession());
+  const [session, setSession] = useState_a(null);
+  const [profile, setProfile] = useState_a(null);
+  const [loading, setLoading] = useState_a(true);
+  const [pendingConfirmation, setPendingConfirmation] = useState_a(null); // { email } | null
+
+  // initial session check + listener
+  useEffect_a(() => {
+    if (!supabase) { setLoading(false); return; }
+    let mounted = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      setSession(data.session || null);
+      setLoading(false);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
+      setSession(sess || null);
+      if (sess) setPendingConfirmation(null);
+    });
+    return () => { mounted = false; sub.subscription.unsubscribe(); };
+  }, []);
+
+  // load profile when session changes
+  useEffect_a(() => {
+    if (!supabase || !session?.user?.id) { setProfile(null); return; }
+    let mounted = true;
+    supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', session.user.id)
+      .single()
+      .then(({ data, error }) => {
+        if (!mounted) return;
+        if (error) { console.warn('[tiled] profile load failed:', error.message); setProfile(null); return; }
+        setProfile(data);
+      });
+    return () => { mounted = false; };
+  }, [session?.user?.id]);
 
   const currentUser = useMemo_a(() => {
-    if (!sessionEmail) return null;
-    return users.find(u => u.email.toLowerCase() === sessionEmail.toLowerCase()) || null;
-  }, [users, sessionEmail]);
+    if (!session || !profile) return null;
+    return {
+      id: profile.id,
+      username: profile.username,
+      email: session.user.email,
+      name: profile.name,
+      avatar: profile.avatar,
+      role: profile.role,
+      bio: profile.bio || '',
+      createdAt: profile.created_at,
+    };
+  }, [session, profile]);
 
-  const login = (identifier, password, remember = true) => {
-    const id = identifier.trim().toLowerCase();
-    const user = users.find(u =>
-      u.email.toLowerCase() === id || u.username.toLowerCase() === id
-    );
-    if (!user) return { ok: false, error: 'No account found for that email or username.' };
-    if (user.password !== password) return { ok: false, error: 'Incorrect password.' };
-    saveSession(user.email.toLowerCase(), remember);
-    setSessionEmail(user.email.toLowerCase());
+  const login = async (identifier, password, remember = true) => {
+    if (!supabase) return { ok: false, error: 'Auth not configured.' };
+    sessionMode.remember = !!remember;
+    const id = identifier.trim();
+    let email = id;
+
+    // username login: resolve to email via security-definer RPC
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(id)) {
+      const { data, error } = await supabase.rpc('get_email_for_username', { uname: id });
+      if (error || !data) {
+        return { ok: false, error: 'No account found for that email or username.' };
+      }
+      email = data;
+    }
+
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      return { ok: false, error: friendlyAuthError(error) };
+    }
     return { ok: true };
   };
 
-  const signup = ({ username, email, password, remember = true }) => {
+  const signup = async ({ username, email, password, remember = true }) => {
+    if (!supabase) return { ok: false, error: 'Auth not configured.' };
+    sessionMode.remember = !!remember;
+
     const u = (username || '').trim();
     const e = (email || '').trim();
     if (!u) return { ok: false, error: 'Username is required.' };
@@ -112,34 +158,61 @@ function AuthProvider({ children }) {
       return { ok: false, error: 'Enter a valid email address.' };
     if (!passwordValid(password))
       return { ok: false, error: 'Password does not meet all requirements.' };
-    if (users.some(x => x.email.toLowerCase() === e.toLowerCase()))
-      return { ok: false, error: 'An account with that email already exists.' };
-    if (users.some(x => x.username.toLowerCase() === u.toLowerCase()))
-      return { ok: false, error: 'That username is taken.' };
 
-    const avatar = u.slice(0, 2).toUpperCase();
-    const newUser = {
-      username: u, email: e, password,
-      name: u.charAt(0).toUpperCase() + u.slice(1),
-      avatar, role: ROLE_USER, bio: '',
-      createdAt: new Date().toISOString(),
-    };
-    const next = [...users, newUser];
-    setUsers(next); saveUsers(next);
-    saveSession(e.toLowerCase(), remember); setSessionEmail(e.toLowerCase());
+    const { data, error } = await supabase.auth.signUp({
+      email: e,
+      password,
+      options: { data: { username: u.toLowerCase() } },
+    });
+    if (error) return { ok: false, error: friendlyAuthError(error) };
+
+    // If email confirmation is enabled, supabase returns a user but no session.
+    if (data.user && !data.session) {
+      setPendingConfirmation({ email: e });
+      return { ok: true, needsConfirmation: true };
+    }
     return { ok: true };
   };
 
-  const logout = () => { saveSession(null, false); setSessionEmail(null); };
+  const logout = async () => {
+    if (!supabase) return;
+    await supabase.auth.signOut();
+    setSession(null); setProfile(null);
+  };
 
-  const value = { currentUser, login, signup, logout, users };
+  const value = { currentUser, login, signup, logout, loading, pendingConfirmation };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
+function friendlyAuthError(error) {
+  const m = (error?.message || '').toLowerCase();
+  if (m.includes('invalid login')) return 'Email/username and password don\'t match.';
+  if (m.includes('already registered')) return 'An account with that email already exists.';
+  if (m.includes('rate limit')) return 'Too many attempts — wait a moment and try again.';
+  if (m.includes('email not confirmed')) return 'Confirm your email address before signing in.';
+  return error?.message || 'Something went wrong. Try again.';
+}
+
 function AuthGate({ children }) {
-  const { currentUser } = useAuth();
+  const { currentUser, loading } = useAuth();
+  if (loading) return <AuthLoading />;
   if (!currentUser) return <AuthScreen />;
   return children;
+}
+
+function AuthLoading() {
+  return (
+    <div className="ti-auth-root">
+      <div className="ti-auth-bg" />
+      <div className="ti-auth-loading">
+        <div className="ti-logo ti-auth-logo">
+          <span className="ti-logo-mark"><span /><span /><span /><span /></span>
+          <span className="ti-logo-word">Tiled</span>
+        </div>
+        <div className="ti-auth-loading-bar"><span /></div>
+      </div>
+    </div>
+  );
 }
 
 function EyeIcon({ open }) {
@@ -181,86 +254,6 @@ function PasswordField({ value, onChange, placeholder, autoComplete, onKeyDown, 
   );
 }
 
-function AuthScreen() {
-  const [tab, setTab] = useState_a('login'); // 'login' | 'signup'
-  return (
-    <div className="ti-auth-root">
-      <div className="ti-auth-bg" />
-      <div className="ti-auth-card">
-        <div className="ti-gloss" />
-        <div className="ti-gloss-edge" />
-        <header className="ti-auth-hd">
-          <div className="ti-logo ti-auth-logo">
-            <span className="ti-logo-mark"><span /><span /><span /><span /></span>
-            <span className="ti-logo-word">Tiled</span>
-          </div>
-          <div className="ti-auth-tabs" data-tab={tab}>
-            <span className="ti-auth-tab-thumb" style={{ left: tab === 'login' ? '4px' : 'calc(50% + 0px)' }} />
-            <button className={`ti-auth-tab${tab === 'login' ? ' is-active' : ''}`}
-                    onClick={() => setTab('login')}>Sign in</button>
-            <button className={`ti-auth-tab${tab === 'signup' ? ' is-active' : ''}`}
-                    onClick={() => setTab('signup')}>Create account</button>
-          </div>
-        </header>
-        {tab === 'login' ? <LoginForm onSwitch={() => setTab('signup')} /> : <SignupForm onSwitch={() => setTab('login')} />}
-        <footer className="ti-auth-ft">
-          <div className="ti-auth-ft-line">
-            <span className="ti-auth-ft-eyebrow">Prototype</span>
-            <span>Try <code>yohan@tiled.app</code> · <code>Yohan2026!</code> (Owner) or <code>asha@tiled.app</code> · <code>Admin2026!</code> (Admin)</span>
-          </div>
-          <div className="ti-auth-ft-note">
-            Accounts are stored on this device only — sign in on a different device or browser and you'll see a fresh state. Cross-device sync requires a server backend.
-          </div>
-        </footer>
-      </div>
-    </div>
-  );
-}
-
-function LoginForm({ onSwitch }) {
-  const { login } = useAuth();
-  const [identifier, setIdentifier] = useState_a('');
-  const [password, setPassword] = useState_a('');
-  const [remember, setRemember] = useState_a(true);
-  const [error, setError] = useState_a(null);
-
-  const submit = (e) => {
-    e?.preventDefault();
-    setError(null);
-    if (!identifier.trim() || !password) {
-      setError('Enter your email/username and password.');
-      return;
-    }
-    const r = login(identifier, password, remember);
-    if (!r.ok) setError(r.error);
-  };
-
-  return (
-    <form className="ti-auth-form" onSubmit={submit}>
-      <label className="ti-auth-row">
-        <span className="ti-auth-lbl">Email or username</span>
-        <input className="ti-auth-input"
-               value={identifier}
-               onChange={(e) => setIdentifier(e.target.value)}
-               placeholder="you@example.com"
-               autoComplete="username"
-               autoFocus />
-      </label>
-      <label className="ti-auth-row">
-        <span className="ti-auth-lbl">Password</span>
-        <PasswordField value={password} onChange={setPassword}
-                       autoComplete="current-password" />
-      </label>
-      <RememberMe checked={remember} onChange={setRemember} />
-      {error && <div className="ti-auth-err">{error}</div>}
-      <button className="ti-auth-submit" type="submit">Sign in</button>
-      <div className="ti-auth-switch">
-        New to Tiled? <button type="button" onClick={onSwitch}>Create an account</button>
-      </div>
-    </form>
-  );
-}
-
 function RememberMe({ checked, onChange }) {
   return (
     <label className="ti-auth-remember">
@@ -285,6 +278,97 @@ function RememberMe({ checked, onChange }) {
   );
 }
 
+function AuthScreen() {
+  const [tab, setTab] = useState_a('login'); // 'login' | 'signup'
+  const { pendingConfirmation } = useAuth();
+  return (
+    <div className="ti-auth-root">
+      <div className="ti-auth-bg" />
+      <div className="ti-auth-card">
+        <div className="ti-gloss" />
+        <div className="ti-gloss-edge" />
+        <header className="ti-auth-hd">
+          <div className="ti-logo ti-auth-logo">
+            <span className="ti-logo-mark"><span /><span /><span /><span /></span>
+            <span className="ti-logo-word">Tiled</span>
+          </div>
+          <div className="ti-auth-tabs" data-tab={tab}>
+            <span className="ti-auth-tab-thumb" style={{ left: tab === 'login' ? '4px' : 'calc(50% + 0px)' }} />
+            <button className={`ti-auth-tab${tab === 'login' ? ' is-active' : ''}`}
+                    onClick={() => setTab('login')}>Sign in</button>
+            <button className={`ti-auth-tab${tab === 'signup' ? ' is-active' : ''}`}
+                    onClick={() => setTab('signup')}>Create account</button>
+          </div>
+        </header>
+        {pendingConfirmation && (
+          <div className="ti-auth-info">
+            We sent a confirmation link to <b>{pendingConfirmation.email}</b>. Click it to finish creating your account.
+          </div>
+        )}
+        {tab === 'login' ? <LoginForm onSwitch={() => setTab('signup')} /> : <SignupForm onSwitch={() => setTab('login')} />}
+        <footer className="ti-auth-ft">
+          <div className="ti-auth-ft-line">
+            <span className="ti-auth-ft-eyebrow">Hosted on Supabase</span>
+            <span>Sessions are real — sign in on any device, see the same account.</span>
+          </div>
+          <div className="ti-auth-ft-note">
+            Tiles, comments, likes, and notifications are still local while we finish migrating the data layer.
+          </div>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+function LoginForm({ onSwitch }) {
+  const { login } = useAuth();
+  const [identifier, setIdentifier] = useState_a('');
+  const [password, setPassword] = useState_a('');
+  const [remember, setRemember] = useState_a(true);
+  const [error, setError] = useState_a(null);
+  const [busy, setBusy] = useState_a(false);
+
+  const submit = async (e) => {
+    e?.preventDefault();
+    setError(null);
+    if (!identifier.trim() || !password) {
+      setError('Enter your email/username and password.');
+      return;
+    }
+    setBusy(true);
+    const r = await login(identifier, password, remember);
+    setBusy(false);
+    if (!r.ok) setError(r.error);
+  };
+
+  return (
+    <form className="ti-auth-form" onSubmit={submit}>
+      <label className="ti-auth-row">
+        <span className="ti-auth-lbl">Email or username</span>
+        <input className="ti-auth-input"
+               value={identifier}
+               onChange={(e) => setIdentifier(e.target.value)}
+               placeholder="you@example.com"
+               autoComplete="username"
+               autoFocus />
+      </label>
+      <label className="ti-auth-row">
+        <span className="ti-auth-lbl">Password</span>
+        <PasswordField value={password} onChange={setPassword}
+                       autoComplete="current-password" />
+      </label>
+      <RememberMe checked={remember} onChange={setRemember} />
+      {error && <div className="ti-auth-err">{error}</div>}
+      <button className="ti-auth-submit" type="submit" disabled={busy}>
+        {busy ? 'Signing in…' : 'Sign in'}
+      </button>
+      <div className="ti-auth-switch">
+        New to Tiled? <button type="button" onClick={onSwitch}>Create an account</button>
+      </div>
+    </form>
+  );
+}
+
 function SignupForm({ onSwitch }) {
   const { signup } = useAuth();
   const [username, setUsername] = useState_a('');
@@ -293,15 +377,18 @@ function SignupForm({ onSwitch }) {
   const [remember, setRemember] = useState_a(true);
   const [error, setError] = useState_a(null);
   const [touched, setTouched] = useState_a(false);
+  const [busy, setBusy] = useState_a(false);
 
   const checks = validatePassword(password);
   const allOk = checks.every(c => c.ok);
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e?.preventDefault();
     setError(null);
     setTouched(true);
-    const r = signup({ username, email, password, remember });
+    setBusy(true);
+    const r = await signup({ username, email, password, remember });
+    setBusy(false);
     if (!r.ok) setError(r.error);
   };
 
@@ -343,8 +430,9 @@ function SignupForm({ onSwitch }) {
       </ul>
       <RememberMe checked={remember} onChange={setRemember} />
       {error && <div className="ti-auth-err">{error}</div>}
-      <button className="ti-auth-submit" type="submit" disabled={!allOk || !username.trim() || !email.trim()}>
-        Create account
+      <button className="ti-auth-submit" type="submit"
+              disabled={busy || !allOk || !username.trim() || !email.trim()}>
+        {busy ? 'Creating account…' : 'Create account'}
       </button>
       <div className="ti-auth-switch">
         Already have an account? <button type="button" onClick={onSwitch}>Sign in</button>

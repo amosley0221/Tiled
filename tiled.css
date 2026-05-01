@@ -2824,6 +2824,44 @@ button { font-family: inherit; }
   letter-spacing: -0.005em;
 }
 
+/* loading state shown while Supabase restores a session */
+.ti-auth-loading {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 22px;
+  padding: 40px 60px;
+}
+.ti-auth-loading-bar {
+  width: 160px; height: 2px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+}
+.ti-auth-loading-bar span {
+  position: absolute; left: 0; top: 0; bottom: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: authLoadingSlide 1.4s cubic-bezier(.4,0,.2,1) infinite;
+}
+@keyframes authLoadingSlide {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(400%); }
+}
+
+/* info banner (e.g. "check your email to confirm") */
+.ti-auth-info {
+  background: color-mix(in oklch, var(--accent) 12%, transparent);
+  border: 0.5px solid color-mix(in oklch, var(--accent) 35%, transparent);
+  color: var(--text);
+  font-size: 12.5px;
+  padding: 11px 13px;
+  border-radius: 10px;
+  letter-spacing: -0.005em;
+  line-height: 1.5;
+}
+.ti-auth-info b { color: var(--accent); }
+
 @media (max-width: 480px) {
   .ti-auth-rules { grid-template-columns: 1fr; }
   .ti-auth-card { padding: 22px 18px 18px; }
