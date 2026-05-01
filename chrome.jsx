@@ -2,12 +2,13 @@
 
 const { useState: useState_c, useEffect: useEffect_c, useRef: useRef_c } = React;
 
-function TopBar({ mode, setMode, filter, setFilter, view, setView, likedCount, savedCount, onCompose, onProfile, isOnProfile, allTags, tagFilter, setTagFilter, onNotifications, notifUnread, user, t }) {
+function TopBar({ mode, setMode, filter, setFilter, view, setView, likedCount, savedCount, onCompose, onProfile, isOnProfile, allTags, tagFilter, setTagFilter, onNotifications, notifUnread, onAdmin, user, t }) {
   const notifBtnRef = useRef_c(null);
   const handleBell = () => {
     const r = notifBtnRef.current?.getBoundingClientRect();
     onNotifications(r ? { top: r.top, left: r.left, width: r.width, height: r.height } : null);
   };
+  const isStaff = user?.role === 'admin' || user?.role === 'owner';
   return (
     <header className="ti-top">
       <div className="ti-top-l">
@@ -27,6 +28,17 @@ function TopBar({ mode, setMode, filter, setFilter, view, setView, likedCount, s
       <div className="ti-top-r">
         <FilterPill filter={filter} setFilter={setFilter} />
         <SearchPopover allTags={allTags} tagFilter={tagFilter} setTagFilter={setTagFilter} />
+        {isStaff && (
+          <button className={`ti-icn-btn ti-staff ti-staff-${user.role}`}
+                  aria-label={`${user.role} panel`}
+                  title={`${user.role === 'owner' ? 'Owner' : 'Admin'} panel`}
+                  onClick={onAdmin}>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6">
+              <path d="M12 3l8 3v5c0 5-3.5 8.5-8 9.5C7.5 19.5 4 16 4 11V6z"/>
+              <path d="m9 12 2 2 4-4"/>
+            </svg>
+          </button>
+        )}
         <button ref={notifBtnRef} className="ti-icn-btn ti-bell" aria-label="notifications" onClick={handleBell}>
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.6">
             <path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15L6 16zM10 20a2 2 0 0 0 4 0"/>

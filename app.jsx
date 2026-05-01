@@ -228,6 +228,7 @@ function TiledApp({ tweaks }) {
   const [notifications, setNotifications] = useState(SEED_NOTIFICATIONS);
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifOrigin, setNotifOrigin] = useState(null);
+  const [adminOpen, setAdminOpen] = useState(false);
 
   const accentCSS = useMemo(() => ({
     gold: 'oklch(0.82 0.13 78)',
@@ -503,6 +504,7 @@ function TiledApp({ tweaks }) {
               isOnProfile={onProfile}
               onNotifications={handleOpenNotifications}
               notifUnread={notifications.filter(n => n.unread).length}
+              onAdmin={() => setAdminOpen(true)}
               user={ME}
               t={t} />
 
@@ -576,6 +578,10 @@ function TiledApp({ tweaks }) {
                             onClose={() => setNotifOpen(false)}
                             onDismiss={handleDismissNotification}
                             onClearAll={handleClearNotifications} />
+      )}
+
+      {adminOpen && (ME.role === 'admin' || ME.role === 'owner') && (
+        <AdminPanel user={ME} onClose={() => setAdminOpen(false)} />
       )}
 
       {composing && (

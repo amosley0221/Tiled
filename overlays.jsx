@@ -668,7 +668,199 @@ function NotifGlyph({ kind }) {
   return null;
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Admin / Owner panel — visible only to staff. Lists profiles from
+// Supabase; Owner can change roles, Admin can view. Stats tab summarizes
+// the count by role.
+// ─────────────────────────────────────────────────────────────────────────
+
+function AdminPanel({ user, onClose }) {
+  const supabase = window.supabaseClient;
+  const [users, setUsers] = useState_o([]);
+  const [loading, setLoading] = useState_o(true);
+  const [tab, setTab] = useState_o('users');
+  const [error, setError] = useState_o(null);
+  const [pendingId, setPendingId] = useState_o(null);
+  const isOwner = user?.role === 'owner';
+
+  useEffect_o(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const loadUsers = () => {
+    if (!supabase) { setError('Supabase not configured.'); setLoading(false); return; }
+    setLoading(true);
+    supabase.from('profiles')
+      .select('id, username, name, avatar, role, bio, created_at')
+      .order('role', { ascending: true })
+      .order('created_at', { ascending: true })
+      .then(({ data, error }) => {
+        if (error) { setError(error.message); setLoading(false); return; }
+        setUsers(data || []);
+        setLoading(false);
+      });
+  };
+
+  useEffect_o(() => { loadUsers(); }, []);
+
+  const setRole = async (userId, newRole) => {
+    setError(null);
+    setPendingId(userId);
+    const { error } = await supabase
+      .from('profiles')
+      .update({ role: newRole })
+      .eq('id', userId);
+    setPendingId(null);
+    if (error) {
+      setError(error.message || 'Could not change role.');
+      return;
+    }
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
+  };
+
+  const stats = {
+    total: users.length,
+    owners: users.filter(u => u.role === 'owner').length,
+    admins: users.filter(u => u.role === 'admin').length,
+    members: users.filter(u => u.role === 'user').length,
+  };
+
+  return (
+    <div className="ti-overlay ti-admin-overlay" onClick={onClose}>
+      <div className="ti-overlay-bg" />
+      <div className="ti-admin-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="ti-gloss" />
+        <div className="ti-gloss-edge" />
+
+        <header className="ti-admin-hd">
+          <div>
+            <div className="ti-admin-eyebrow">
+              {isOwner ? 'Owner panel' : 'Admin panel'} · staff only
+            </div>
+            <h2 className="ti-admin-title">Site administration</h2>
+          </div>
+          <button className="ti-x" onClick={onClose} aria-label="close">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7">
+              <path d="m6 6 12 12M6 18 18 6"/>
+            </svg>
+          </button>
+        </header>
+
+        <nav className="ti-admin-tabs">
+          <button className={`ti-admin-tab${tab === 'users' ? ' is-active' : ''}`} onClick={() => setTab('users')}>
+            Users <span className="ti-admin-tab-count">{stats.total}</span>
+          </button>
+          <button className={`ti-admin-tab${tab === 'stats' ? ' is-active' : ''}`} onClick={() => setTab('stats')}>
+            Overview
+          </button>
+        </nav>
+
+        <div className="ti-admin-body">
+          {error && <div className="ti-auth-err ti-admin-err">{error}</div>}
+          {loading ? (
+            <div className="ti-admin-loading"><div className="ti-auth-loading-bar"><span /></div></div>
+          ) : tab === 'users' ? (
+            <AdminUsersList users={users} isOwner={isOwner} myId={user?.id}
+                            pendingId={pendingId} onChangeRole={setRole} />
+          ) : (
+            <AdminStats stats={stats} />
+          )}
+        </div>
+
+        <footer className="ti-admin-ft">
+          <span className="ti-admin-ft-note">
+            {isOwner
+              ? 'As Owner, you can promote or demote any account.'
+              : 'As Admin, you can view all accounts. Only the Owner can change roles.'}
+          </span>
+          <button className="ti-admin-refresh" onClick={loadUsers} disabled={loading}>
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.7">
+              <path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v6h-6"/>
+            </svg>
+            <span>Refresh</span>
+          </button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+function AdminUsersList({ users, isOwner, myId, pendingId, onChangeRole }) {
+  if (!users.length) {
+    return <div className="ti-admin-empty">No accounts yet.</div>;
+  }
+  return (
+    <div className="ti-admin-users">
+      {users.map(u => {
+        const isSelf = u.id === myId;
+        const disabled = !isOwner || isSelf || pendingId === u.id;
+        return (
+          <div key={u.id} className={`ti-admin-user ti-role-${u.role}`}>
+            <div className={`ti-admin-user-avatar ti-role-ring-${u.role}`}>{u.avatar}</div>
+            <div className="ti-admin-user-meta">
+              <div className="ti-admin-user-name">
+                {u.name}
+                {u.role === 'owner' && <span className="ti-role-badge ti-role-badge-owner ti-role-badge-sm">Owner</span>}
+                {u.role === 'admin' && <span className="ti-role-badge ti-role-badge-admin ti-role-badge-sm">Admin</span>}
+                {isSelf && <span className="ti-admin-self">you</span>}
+              </div>
+              <div className="ti-admin-user-handle">@{u.username}</div>
+              {u.bio && <div className="ti-admin-user-bio">{u.bio}</div>}
+            </div>
+            <div className="ti-admin-user-actions">
+              {isOwner ? (
+                <select className="ti-admin-role-select"
+                        value={u.role}
+                        disabled={disabled}
+                        onChange={(e) => {
+                          const next = e.target.value;
+                          if (next === u.role) return;
+                          if (u.role === 'owner' && !window.confirm(`Demote ${u.name} from Owner?`)) return;
+                          if (next === 'owner' && !window.confirm(`Promote ${u.name} to Owner? You'll keep your own owner role.`)) return;
+                          onChangeRole(u.id, next);
+                        }}
+                        title={isSelf ? "You can't change your own role." : ''}>
+                  <option value="user">Member</option>
+                  <option value="admin">Admin</option>
+                  <option value="owner">Owner</option>
+                </select>
+              ) : (
+                <span className="ti-admin-role-readonly">{u.role}</span>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function AdminStats({ stats }) {
+  const cards = [
+    { label: 'Total accounts', value: stats.total, tone: 'neutral' },
+    { label: 'Members',        value: stats.members, tone: 'neutral' },
+    { label: 'Admins',         value: stats.admins, tone: 'info' },
+    { label: 'Owners',         value: stats.owners, tone: 'gold' },
+  ];
+  return (
+    <div className="ti-admin-stats">
+      {cards.map(c => (
+        <div key={c.label} className={`ti-admin-stat ti-admin-stat-${c.tone}`}>
+          <div className="ti-admin-stat-num">{c.value}</div>
+          <div className="ti-admin-stat-lbl">{c.label}</div>
+        </div>
+      ))}
+      <div className="ti-admin-stat-note">
+        Tile, comment, and notification counts will appear here once the data layer migration is complete.
+      </div>
+    </div>
+  );
+}
+
 window.ExpandedTile = ExpandedTile;
 window.CommentRail = CommentRail;
 window.Composer = Composer;
 window.NotificationsPanel = NotificationsPanel;
+window.AdminPanel = AdminPanel;

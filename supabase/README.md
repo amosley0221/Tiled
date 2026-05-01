@@ -51,3 +51,12 @@ and (later) realtime updates.
 
 The migration is idempotent — `create table if not exists`, `drop policy if
 exists` before each `create policy`, etc. — so you can re-run it after edits.
+
+## Migrations index
+
+- `0001_init.sql` — schema, triggers, RLS for the data layer
+- `0002_admin.sql` — `is_admin()` / `is_owner()` helpers, role-change trigger
+  guard, RLS letting Owner update any profile, RLS letting Admin/Owner delete
+  any tile or comment
+
+Run them in order. Both are idempotent.
