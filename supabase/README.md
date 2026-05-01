@@ -68,6 +68,10 @@ exists` before each `create policy`, etc. — so you can re-run it after edits.
 - `0005_follows.sql` — `follows` table (follower_id → followee_id),
   `profile_stats` view (live follower/following counts on top of profiles),
   notification trigger on follow, and adds `follows` to realtime.
+- `0006_avatars.sql` — adds `profiles.avatar_url`, re-defines the
+  `tile_feed` and `profile_stats` views to include it, creates the
+  public `avatars` storage bucket, and writes RLS on `storage.objects`
+  so users can only upload to their own folder.
 
 Run them in order. All migrations are idempotent.
 

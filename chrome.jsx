@@ -2,7 +2,7 @@
 
 const { useState: useState_c, useEffect: useEffect_c, useRef: useRef_c } = React;
 
-function TopBar({ mode, setMode, filter, setFilter, view, setView, likedCount, savedCount, onCompose, onProfile, isOnProfile, allTags, tagFilter, setTagFilter, userFilter, setUserFilter, onNotifications, notifUnread, onAdmin, onFollow, followingIds, user, t }) {
+function TopBar({ mode, setMode, filter, setFilter, view, setView, likedCount, savedCount, onCompose, onProfile, isOnProfile, allTags, tagFilter, setTagFilter, userFilter, setUserFilter, onNotifications, notifUnread, onAdmin, onFollow, followingIds, onShowProfile, user, t }) {
   const notifBtnRef = useRef_c(null);
   const handleBell = () => {
     const r = notifBtnRef.current?.getBoundingClientRect();
@@ -29,7 +29,8 @@ function TopBar({ mode, setMode, filter, setFilter, view, setView, likedCount, s
         <FilterPill filter={filter} setFilter={setFilter} />
         <SearchPopover allTags={allTags} tagFilter={tagFilter} setTagFilter={setTagFilter}
                        userFilter={userFilter} setUserFilter={setUserFilter}
-                       me={user} followingIds={followingIds} onFollow={onFollow} />
+                       me={user} followingIds={followingIds} onFollow={onFollow}
+                       onShowProfile={onShowProfile} />
         {isStaff && (
           <button className={`ti-icn-btn ti-staff ti-staff-${user.role}`}
                   aria-label={`${user.role} panel`}
@@ -57,14 +58,16 @@ function TopBar({ mode, setMode, filter, setFilter, view, setView, likedCount, s
         </button>
         <button className={`ti-me${isOnProfile ? ' is-active' : ''}${user?.role === 'owner' ? ' is-owner' : user?.role === 'admin' ? ' is-admin' : ''}`}
                 onClick={onProfile} aria-label="profile" title={user?.name || 'Profile'}>
-          {user?.avatar || 'YO'}
+          {user?.avatar_url
+            ? <img src={user.avatar_url} alt={user?.avatar || ''} />
+            : (user?.avatar || 'YO')}
         </button>
       </div>
     </header>
   );
 }
 
-function SearchPopover({ allTags, tagFilter, setTagFilter, userFilter, setUserFilter, me, followingIds, onFollow }) {
+function SearchPopover({ allTags, tagFilter, setTagFilter, userFilter, setUserFilter, me, followingIds, onFollow, onShowProfile }) {
   const [open, setOpen] = useState_c(false);
   const [q, setQ] = useState_c('');
   const [users, setUsers] = useState_c([]);
@@ -103,7 +106,7 @@ function SearchPopover({ allTags, tagFilter, setTagFilter, userFilter, setUserFi
     const t = setTimeout(async () => {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, username, name, avatar, role')
+        .select('id, username, name, avatar, avatar_url, role')
         .or(`username.ilike.%${cleaned}%,name.ilike.%${cleaned}%`)
         .limit(6);
       if (!mounted) return;
@@ -114,7 +117,13 @@ function SearchPopover({ allTags, tagFilter, setTagFilter, userFilter, setUserFi
   }, [cleaned, tagMode]);
 
   const applyTag = (tag) => { setTagFilter(tag); setUserFilter && setUserFilter(null); setOpen(false); };
-  const applyUser = (u) => {
+  // Clicking a user's name now opens their profile page; the legacy filter-by-user
+  // behavior is still available via the secondary "Filter feed" affordance.
+  const openUser = (u) => {
+    setOpen(false);
+    if (onShowProfile) onShowProfile(u.id);
+  };
+  const filterByUser = (u) => {
     setUserFilter && setUserFilter({ handle: u.username, name: u.name, avatar: u.avatar, role: u.role });
     setTagFilter(null);
     setOpen(false);
@@ -122,9 +131,9 @@ function SearchPopover({ allTags, tagFilter, setTagFilter, userFilter, setUserFi
   const onKey = (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (users[0] && (userMode || tagMatches.length === 0)) applyUser(users[0]);
+      if (users[0] && (userMode || tagMatches.length === 0)) openUser(users[0]);
       else if (tagMatches[0]) applyTag(tagMatches[0].tag);
-      else if (users[0]) applyUser(users[0]);
+      else if (users[0]) openUser(users[0]);
       else if (cleaned && !userMode) applyTag(cleaned);
     }
   };
@@ -173,8 +182,12 @@ function SearchPopover({ allTags, tagFilter, setTagFilter, userFilter, setUserFi
                     return (
                       <div key={u.id}
                            className={`ti-search-row ti-search-user${userFilter?.handle === u.username ? ' is-active' : ''}`}>
-                        <button className="ti-search-user-main" onClick={() => applyUser(u)}>
-                          <span className={`ti-search-user-avatar ti-role-ring-${u.role}`}>{u.avatar}</span>
+                        <button className="ti-search-user-main" onClick={() => openUser(u)}>
+                          <span className={`ti-search-user-avatar ti-role-ring-${u.role}`}>
+                            {u.avatar_url
+                              ? <img src={u.avatar_url} alt={u.avatar} />
+                              : u.avatar}
+                          </span>
                           <span className="ti-search-user-meta">
                             <span className="ti-search-user-name">
                               {u.name}
@@ -504,7 +517,7 @@ function ModeIndicator({ mode, view }) {
   return <div className="ti-mode-indicator" data-mode={mode}>{text}</div>;
 }
 
-function ProfileHeader({ user, view, setView, likedCount, savedCount, postCount, mode, onLogout, onEdit, onShowFollowers, onShowFollowing, followerCount, followingCount }) {
+function ProfileHeader({ user, view, setView, likedCount, savedCount, postCount, mode, onLogout, onEdit, onShowFollowers, onShowFollowing, followerCount, followingCount, isMe = true, isFollowing, onFollow, onBack, loading }) {
   const u = user || {};
   const role = u.role || 'user';
   const joined = (() => {
@@ -517,19 +530,35 @@ function ProfileHeader({ user, view, setView, likedCount, savedCount, postCount,
   const followerN = Number.isFinite(followerCount) ? followerCount : 0;
   const followingN = Number.isFinite(followingCount) ? followingCount : 0;
   return (
-    <section className={`ti-profile ti-role-${role}`}>
+    <section className={`ti-profile ti-role-${role}${isMe ? '' : ' ti-profile-other'}`}>
       <div className="ti-gloss" />
       <div className="ti-gloss-edge" />
       <div className="ti-profile-bg" />
+      {!isMe && onBack && (
+        <button className="ti-profile-back" onClick={onBack}>
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.7">
+            <path d="m15 6-6 6 6 6"/>
+          </svg>
+          <span>Back to my profile</span>
+        </button>
+      )}
       <div className="ti-profile-row">
-        <div className={`ti-profile-avatar ti-role-ring-${role}`}>{u.avatar || 'YO'}</div>
+        <div className={`ti-profile-avatar ti-role-ring-${role}`}>
+          {u.avatar_url
+            ? <img src={u.avatar_url} alt={u.avatar || ''} />
+            : (u.avatar || 'YO')}
+        </div>
         <div className="ti-profile-meta">
           <div className="ti-profile-name">
-            {u.name || 'You'}
+            {loading ? '…' : (u.name || (isMe ? 'You' : ''))}
             {role !== 'user' && <RoleBadge role={role} />}
           </div>
-          <div className="ti-profile-handle">@{u.handle || 'you'} · joined {joined}</div>
-          <div className="ti-profile-bio">{u.bio || `Currently in ${mode} mode.`}</div>
+          <div className="ti-profile-handle">@{u.handle || ''} · joined {joined}</div>
+          <div className="ti-profile-bio">
+            {loading
+              ? 'Loading profile…'
+              : (u.bio || (isMe ? `Currently in ${mode} mode.` : 'No bio yet.'))}
+          </div>
           <div className="ti-profile-stats">
             <span><strong>{postCount}</strong> tile{postCount === 1 ? '' : 's'}</span>
             <span className="ti-profile-stat-sep" />
@@ -543,22 +572,33 @@ function ProfileHeader({ user, view, setView, likedCount, savedCount, postCount,
           </div>
         </div>
         <div className="ti-profile-actions">
-          <button className="ti-profile-edit" onClick={onEdit}>Edit profile</button>
-          {onLogout && (
-            <button className="ti-profile-logout" onClick={onLogout}>
-              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6">
-                <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/>
-                <path d="M10 17l-5-5 5-5"/>
-                <path d="M5 12h12"/>
-              </svg>
-              <span>Sign out</span>
+          {isMe ? (
+            <>
+              <button className="ti-profile-edit" onClick={onEdit}>Edit profile</button>
+              {onLogout && (
+                <button className="ti-profile-logout" onClick={onLogout}>
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6">
+                    <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/>
+                    <path d="M10 17l-5-5 5-5"/>
+                    <path d="M5 12h12"/>
+                  </svg>
+                  <span>Sign out</span>
+                </button>
+              )}
+            </>
+          ) : (
+            <button className={`ti-follow-btn${isFollowing ? ' is-following' : ''}`}
+                    onClick={onFollow}>
+              {isFollowing ? 'Following' : 'Follow'}
             </button>
           )}
         </div>
       </div>
-      <div className="ti-profile-toggle-row">
-        <ViewToggle view={view} setView={setView} likedCount={likedCount} savedCount={savedCount} />
-      </div>
+      {isMe && (
+        <div className="ti-profile-toggle-row">
+          <ViewToggle view={view} setView={setView} likedCount={likedCount} savedCount={savedCount} />
+        </div>
+      )}
     </section>
   );
 }

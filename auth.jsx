@@ -136,6 +136,7 @@ function AuthProvider({ children }) {
       email: session.user.email,
       name: profile.name,
       avatar: profile.avatar,
+      avatar_url: profile.avatar_url || null,
       role: profile.role,
       bio: profile.bio || '',
       createdAt: profile.created_at,

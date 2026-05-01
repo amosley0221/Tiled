@@ -62,7 +62,11 @@ function Tile({ tile, comments, dismissing, me, onDismiss, onLike, onSave, onDel
 
       <header className="ti-tile-hd">
         <div className="ti-author">
-          <div className="ti-avatar">{tile.author.avatar}</div>
+          <div className="ti-avatar">
+            {tile.author.avatar_url
+              ? <img src={tile.author.avatar_url} alt={tile.author.avatar} />
+              : tile.author.avatar}
+          </div>
           <div className="ti-author-meta">
             <div className="ti-author-name">{tile.author.name}</div>
             <div className="ti-author-handle">@{tile.author.handle} · {tile.time}</div>

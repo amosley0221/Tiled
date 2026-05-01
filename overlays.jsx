@@ -88,7 +88,11 @@ function ExpandedTile({ tile, comments, onClose, onLike, onSave, onDelete, onCom
         <div className="ti-expanded-main">
           <header className="ti-tile-hd ti-tile-hd-lg">
             <div className="ti-author">
-              <div className="ti-avatar ti-avatar-lg">{tile.author.avatar}</div>
+              <div className="ti-avatar ti-avatar-lg">
+                {tile.author.avatar_url
+                  ? <img src={tile.author.avatar_url} alt={tile.author.avatar} />
+                  : tile.author.avatar}
+              </div>
               <div className="ti-author-meta">
                 <div className="ti-author-name">{tile.author.name}</div>
                 <div className="ti-author-handle">@{tile.author.handle} · {tile.time}</div>
@@ -143,7 +147,11 @@ function ExpandedTile({ tile, comments, onClose, onLike, onSave, onDelete, onCom
             {comments.map(c => <Comment key={c.id} c={c} />)}
           </div>
           <form className="ti-rail-input" onSubmit={submit}>
-            <div className="ti-avatar ti-avatar-sm">YO</div>
+            <div className="ti-avatar ti-avatar-sm">
+              {me?.avatar_url
+                ? <img src={me.avatar_url} alt={me?.avatar || 'you'} />
+                : (me?.avatar || 'YO')}
+            </div>
             <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Add a comment…" />
             <button type="submit" disabled={!draft.trim()}>
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -228,7 +236,11 @@ function ExpandedBody({ tile, onVote }) {
 function Comment({ c }) {
   return (
     <div className="ti-comment">
-      <div className="ti-avatar ti-avatar-sm">{c.author.avatar}</div>
+      <div className="ti-avatar ti-avatar-sm">
+        {c.author.avatar_url
+          ? <img src={c.author.avatar_url} alt={c.author.avatar} />
+          : c.author.avatar}
+      </div>
       <div className="ti-comment-body">
         <div className="ti-comment-meta">
           <span className="ti-comment-handle">@{c.author.handle}</span>
@@ -244,7 +256,7 @@ function Comment({ c }) {
   );
 }
 
-function CommentRail({ tile, comments, onClose, onComment }) {
+function CommentRail({ tile, comments, onClose, onComment, me }) {
   const [draft, setDraft] = useState_o('');
   useEffect_o(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
@@ -280,7 +292,11 @@ function CommentRail({ tile, comments, onClose, onComment }) {
           {comments.map(c => <Comment key={c.id} c={c} />)}
         </div>
         <form className="ti-rail-input" onSubmit={submit}>
-          <div className="ti-avatar ti-avatar-sm">YO</div>
+          <div className="ti-avatar ti-avatar-sm">
+            {me?.avatar_url
+              ? <img src={me.avatar_url} alt={me?.avatar || 'you'} />
+              : (me?.avatar || 'YO')}
+          </div>
           <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Add a comment…" autoFocus />
           <button type="submit" disabled={!draft.trim()}>
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -624,7 +640,11 @@ function NotificationItem({ n, onDismiss }) {
       )}
       {n.unread && <span className="ti-notif-unread-dot" />}
       <div className="ti-notif-avatar-wrap">
-        <div className="ti-avatar ti-notif-avatar">{n.actor.avatar}</div>
+        <div className="ti-avatar ti-notif-avatar">
+          {n.actor.avatar_url
+            ? <img src={n.actor.avatar_url} alt={n.actor.avatar} />
+            : n.actor.avatar}
+        </div>
         <span className={`ti-notif-glyph ti-notif-glyph-${n.kind}`}>
           <NotifGlyph kind={n.kind} />
         </span>
@@ -712,7 +732,7 @@ function AdminPanel({ user, onClose }) {
     if (!supabase) { setError('Supabase not configured.'); setLoading(false); return; }
     setLoading(true);
     supabase.from('profiles')
-      .select('id, username, name, avatar, role, bio, created_at')
+      .select('id, username, name, avatar, avatar_url, role, bio, created_at')
       .order('role', { ascending: true })
       .order('created_at', { ascending: true })
       .then(({ data, error }) => {
@@ -817,7 +837,11 @@ function AdminUsersList({ users, isOwner, myId, pendingId, onChangeRole }) {
         const disabled = !isOwner || isSelf || pendingId === u.id;
         return (
           <div key={u.id} className={`ti-admin-user ti-role-${u.role}`}>
-            <div className={`ti-admin-user-avatar ti-role-ring-${u.role}`}>{u.avatar}</div>
+            <div className={`ti-admin-user-avatar ti-role-ring-${u.role}`}>
+              {u.avatar_url
+                ? <img src={u.avatar_url} alt={u.avatar} />
+                : u.avatar}
+            </div>
             <div className="ti-admin-user-meta">
               <div className="ti-admin-user-name">
                 {u.name}
@@ -882,12 +906,36 @@ function AdminStats({ stats }) {
 // Edit profile modal
 // ─────────────────────────────────────────────────────────────────────────
 
-function EditProfileModal({ user, onClose, onSave }) {
+function EditProfileModal({ user, onClose, onSave, onUploadAvatar, onClearAvatar }) {
   const [name, setName] = useState_o(user?.name || '');
   const [avatar, setAvatar] = useState_o(user?.avatar || '');
+  const [avatarUrl, setAvatarUrl] = useState_o(user?.avatar_url || null);
   const [bio, setBio] = useState_o(user?.bio || '');
   const [busy, setBusy] = useState_o(false);
+  const [uploading, setUploading] = useState_o(false);
   const [error, setError] = useState_o(null);
+  const fileRef = useRef_o(null);
+
+  const handleFile = async (file) => {
+    if (!file || !onUploadAvatar) return;
+    setError(null);
+    setUploading(true);
+    const r = await onUploadAvatar(file);
+    setUploading(false);
+    if (!r.ok) { setError(r.error); return; }
+    // bust browser cache so the new file shows immediately
+    setAvatarUrl(r.url + (r.url.includes('?') ? '&' : '?') + 'cb=' + Date.now());
+  };
+
+  const handleRemoveAvatar = async () => {
+    if (!onClearAvatar) return;
+    setError(null);
+    setUploading(true);
+    const r = await onClearAvatar();
+    setUploading(false);
+    if (!r.ok) { setError(r.error); return; }
+    setAvatarUrl(null);
+  };
 
   useEffect_o(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
@@ -925,14 +973,38 @@ function EditProfileModal({ user, onClose, onSave }) {
         </header>
 
         <div className="ti-edit-row">
-          <div className="ti-edit-avatar-preview">{(avatar || 'YO').slice(0, 4).toUpperCase()}</div>
-          <label className="ti-edit-field ti-edit-field-grow">
-            <span className="ti-edit-lbl">Avatar (1–4 letters)</span>
-            <input className="ti-auth-input" maxLength={4}
-                   value={avatar}
-                   onChange={(e) => setAvatar(e.target.value.toUpperCase())} />
-          </label>
+          <div className="ti-edit-avatar-preview">
+            {avatarUrl
+              ? <img src={avatarUrl} alt={avatar} />
+              : (avatar || 'YO').slice(0, 4).toUpperCase()}
+          </div>
+          <div className="ti-edit-avatar-controls">
+            <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp"
+                   style={{ display: 'none' }}
+                   onChange={(e) => handleFile(e.target.files?.[0])} />
+            <button type="button" className="ti-edit-upload"
+                    disabled={uploading}
+                    onClick={() => fileRef.current?.click()}>
+              {uploading ? 'Uploading…' : avatarUrl ? 'Change photo' : 'Upload photo'}
+            </button>
+            {avatarUrl && (
+              <button type="button" className="ti-edit-remove"
+                      disabled={uploading}
+                      onClick={handleRemoveAvatar}>
+                Remove
+              </button>
+            )}
+            <span className="ti-edit-hint ti-edit-hint-block">PNG / JPG / WEBP · max 2 MB</span>
+          </div>
         </div>
+
+        <label className="ti-edit-field">
+          <span className="ti-edit-lbl">Avatar fallback (1–4 letters)</span>
+          <input className="ti-auth-input" maxLength={4}
+                 value={avatar}
+                 onChange={(e) => setAvatar(e.target.value.toUpperCase())} />
+          <span className="ti-edit-hint">Shown when no photo is set or fails to load.</span>
+        </label>
 
         <label className="ti-edit-field">
           <span className="ti-edit-lbl">Display name</span>
@@ -971,7 +1043,7 @@ function EditProfileModal({ user, onClose, onSave }) {
 // Followers / Following list modal
 // ─────────────────────────────────────────────────────────────────────────
 
-function FollowListModal({ tab, ownerId, ownerName, me, followingIds, onFollow, onClose }) {
+function FollowListModal({ tab, ownerId, ownerName, me, followingIds, onFollow, onClose, onOpenProfile }) {
   const supabase = window.supabaseClient;
   const [users, setUsers] = useState_o([]);
   const [loading, setLoading] = useState_o(true);
@@ -990,8 +1062,8 @@ function FollowListModal({ tab, ownerId, ownerName, me, followingIds, onFollow, 
     // tab === 'followers' → people who follow ownerId  → join on follower_id
     // tab === 'following' → people ownerId follows     → join on followee_id
     const select = tab === 'followers'
-      ? 'follower:profiles!follows_follower_id_fkey(id,username,name,avatar,role,bio)'
-      : 'followee:profiles!follows_followee_id_fkey(id,username,name,avatar,role,bio)';
+      ? 'follower:profiles!follows_follower_id_fkey(id,username,name,avatar,avatar_url,role,bio)'
+      : 'followee:profiles!follows_followee_id_fkey(id,username,name,avatar,avatar_url,role,bio)';
     const filter = tab === 'followers' ? 'followee_id' : 'follower_id';
     supabase.from('follows').select(select).eq(filter, ownerId)
       .then(({ data, error }) => {
@@ -1043,17 +1115,24 @@ function FollowListModal({ tab, ownerId, ownerName, me, followingIds, onFollow, 
                 const isFollowing = followingIds?.has(u.id);
                 return (
                   <div key={u.id} className="ti-follow-row">
-                    <div className={`ti-admin-user-avatar ti-role-ring-${u.role}`}>{u.avatar}</div>
-                    <div className="ti-admin-user-meta">
-                      <div className="ti-admin-user-name">
-                        {u.name}
-                        {u.role === 'owner' && <span className="ti-role-badge ti-role-badge-owner ti-role-badge-sm">Owner</span>}
-                        {u.role === 'admin' && <span className="ti-role-badge ti-role-badge-admin ti-role-badge-sm">Admin</span>}
-                        {isMe && <span className="ti-admin-self">you</span>}
+                    <button className="ti-follow-row-main"
+                            onClick={() => { if (!isMe && onOpenProfile) onOpenProfile(u.id); }}>
+                      <div className={`ti-admin-user-avatar ti-role-ring-${u.role}`}>
+                        {u.avatar_url
+                          ? <img src={u.avatar_url} alt={u.avatar} />
+                          : u.avatar}
                       </div>
-                      <div className="ti-admin-user-handle">@{u.username}</div>
-                      {u.bio && <div className="ti-admin-user-bio">{u.bio}</div>}
-                    </div>
+                      <div className="ti-admin-user-meta">
+                        <div className="ti-admin-user-name">
+                          {u.name}
+                          {u.role === 'owner' && <span className="ti-role-badge ti-role-badge-owner ti-role-badge-sm">Owner</span>}
+                          {u.role === 'admin' && <span className="ti-role-badge ti-role-badge-admin ti-role-badge-sm">Admin</span>}
+                          {isMe && <span className="ti-admin-self">you</span>}
+                        </div>
+                        <div className="ti-admin-user-handle">@{u.username}</div>
+                        {u.bio && <div className="ti-admin-user-bio">{u.bio}</div>}
+                      </div>
+                    </button>
                     {!isMe && onFollow && (
                       <button className={`ti-follow-btn${isFollowing ? ' is-following' : ''}`}
                               onClick={() => onFollow(u.id)}>

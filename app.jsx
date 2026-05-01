@@ -38,6 +38,7 @@ function shapeTile(row, likedSet, savedSet, voteMap) {
       handle: row.author_username,
       name: row.author_name,
       avatar: row.author_avatar,
+      avatar_url: row.author_avatar_url,
       role: row.author_role,
     },
     time: relativeTime(row.created_at),
@@ -67,7 +68,7 @@ function shapeComment(row) {
     body: row.body,
     time: relativeTime(row.created_at),
     author: row.author
-      ? { handle: row.author.username, avatar: row.author.avatar }
+      ? { handle: row.author.username, avatar: row.author.avatar, avatar_url: row.author.avatar_url }
       : { handle: 'unknown', avatar: '??' },
     createdAt: row.created_at,
   };
@@ -80,7 +81,7 @@ function shapeNotification(row) {
     unread: !row.read_at,
     time: relativeTime(row.created_at),
     actor: row.actor
-      ? { handle: row.actor.username, name: row.actor.name, avatar: row.actor.avatar }
+      ? { handle: row.actor.username, name: row.actor.name, avatar: row.actor.avatar, avatar_url: row.actor.avatar_url }
       : { handle: 'system', name: 'Tiled', avatar: 'TI' },
     body: row.body,
     preview: row.preview,
@@ -92,7 +93,7 @@ function TiledApp({ tweaks }) {
   const t = tweaks;
   const auth = useAuth();
   const ME = useMemo(() => auth?.currentUser
-    ? { id: auth.currentUser.id, handle: auth.currentUser.username, name: auth.currentUser.name, avatar: auth.currentUser.avatar, role: auth.currentUser.role, email: auth.currentUser.email, bio: auth.currentUser.bio, createdAt: auth.currentUser.createdAt }
+    ? { id: auth.currentUser.id, handle: auth.currentUser.username, name: auth.currentUser.name, avatar: auth.currentUser.avatar, avatar_url: auth.currentUser.avatar_url, role: auth.currentUser.role, email: auth.currentUser.email, bio: auth.currentUser.bio, createdAt: auth.currentUser.createdAt }
     : ME_FALLBACK,
   [auth?.currentUser]);
   const supabase = window.supabaseClient;
@@ -125,6 +126,9 @@ function TiledApp({ tweaks }) {
   const [followerIds, setFollowerIds] = useState(new Set());    // who follows me
   const [editProfileOpen, setEditProfileOpen] = useState(false);
   const [followListOpen, setFollowListOpen] = useState(null);   // 'followers' | 'following' | null
+  const [viewingProfileId, setViewingProfileId] = useState(null); // null = my profile (or off-profile)
+  const [viewedProfile, setViewedProfile] = useState(null);       // profile_stats row when viewing another user
+  const [viewedProfileLoading, setViewedProfileLoading] = useState(false);
 
   const accentCSS = useMemo(() => ({
     gold: 'oklch(0.82 0.13 78)',
@@ -142,13 +146,13 @@ function TiledApp({ tweaks }) {
     if (!silent) setFeedLoading(true);
     const [feedRes, commentsRes, likesRes, savesRes, dismRes, votesRes, notifRes, statsRes, followingRes, followersRes] = await Promise.all([
       supabase.from('tile_feed').select('*').order('created_at', { ascending: false }),
-      supabase.from('comments').select('*, author:profiles!comments_author_id_fkey(username,avatar)').order('created_at', { ascending: true }),
+      supabase.from('comments').select('*, author:profiles!comments_author_id_fkey(username,avatar,avatar_url)').order('created_at', { ascending: true }),
       supabase.from('likes').select('tile_id').eq('user_id', ME.id),
       supabase.from('saves').select('tile_id').eq('user_id', ME.id),
       supabase.from('dismissals').select('tile_id').eq('user_id', ME.id),
       supabase.from('poll_votes').select('tile_id, option_id').eq('user_id', ME.id),
       supabase.from('notifications')
-        .select('*, actor:profiles!notifications_actor_id_fkey(username,name,avatar)')
+        .select('*, actor:profiles!notifications_actor_id_fkey(username,name,avatar,avatar_url)')
         .eq('recipient_id', ME.id)
         .order('created_at', { ascending: false })
         .limit(50),
@@ -243,7 +247,7 @@ function TiledApp({ tweaks }) {
         if (!row) return;
         const { data, error } = await supabase
           .from('notifications')
-          .select('*, actor:profiles!notifications_actor_id_fkey(username,name,avatar)')
+          .select('*, actor:profiles!notifications_actor_id_fkey(username,name,avatar,avatar_url)')
           .eq('id', row.id)
           .maybeSingle();
         if (error || !data) return;
@@ -296,6 +300,10 @@ function TiledApp({ tweaks }) {
 
   const visibleTiles = useMemo(() => {
     return tiles.filter(tile => {
+      // viewing another user's profile → only their public tiles
+      if (onProfile && viewingProfileId) {
+        return tile.author.id === viewingProfileId && !tile.private;
+      }
       // profile page scoping — only the user's own tiles, sub-filtered by view
       if (onProfile) {
         if (view === 'liked') return tile.liked && !tile.private;
@@ -314,7 +322,7 @@ function TiledApp({ tweaks }) {
       if (userFilter && tile.author.handle !== userFilter.handle) return false;
       return true;
     });
-  }, [tiles, mode, filter, tagFilter, userFilter, view, onProfile, ME.handle]);
+  }, [tiles, mode, filter, tagFilter, userFilter, view, onProfile, viewingProfileId, ME.handle]);
 
   // garbage-collect expired pending dismissals every 500ms (drives the countdown UI)
   const [, forceTick] = useState(0);
@@ -471,6 +479,37 @@ function TiledApp({ tweaks }) {
     }
   };
 
+  // ─── Open another user's profile from search/lists
+  const openProfileForUser = async (userId) => {
+    if (!userId || userId === ME?.id) {
+      // viewing own profile
+      setViewingProfileId(null);
+      setViewedProfile(null);
+      setOnProfile(true);
+      setView('feed');
+      return;
+    }
+    setViewingProfileId(userId);
+    setOnProfile(true);
+    setView('feed');
+    setViewedProfileLoading(true);
+    setViewedProfile(null);
+    if (!supabase) { setViewedProfileLoading(false); return; }
+    const { data, error } = await supabase
+      .from('profile_stats')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle();
+    setViewedProfileLoading(false);
+    if (error) { console.warn('[tiled] viewed profile load failed:', error.message); return; }
+    setViewedProfile(data);
+  };
+
+  const exitOtherProfile = () => {
+    setViewingProfileId(null);
+    setViewedProfile(null);
+  };
+
   // ─── Follow / Unfollow another user
   const handleFollow = async (userId) => {
     if (!supabase || !ME?.id || !userId || userId === ME.id) return;
@@ -502,6 +541,45 @@ function TiledApp({ tweaks }) {
         following_count: Math.max(0, (prev.following_count || 0) + (wasFollowing ? 1 : -1)),
       }));
     }
+  };
+
+  // ─── Avatar upload / clear (Supabase Storage 'avatars' bucket)
+  const handleUploadAvatar = async (file) => {
+    if (!supabase || !ME?.id) return { ok: false, error: 'Not signed in.' };
+    if (!file) return { ok: false, error: 'No file selected.' };
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type))
+      return { ok: false, error: 'Only PNG, JPG, or WEBP images are supported.' };
+    if (file.size > 2 * 1024 * 1024)
+      return { ok: false, error: 'Image must be under 2 MB.' };
+    const ext = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg';
+    const path = `${ME.id}/avatar.${ext}`;
+    const { error: upErr } = await supabase.storage
+      .from('avatars')
+      .upload(path, file, { upsert: true, cacheControl: '0', contentType: file.type });
+    if (upErr) return { ok: false, error: upErr.message };
+    const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+    const url = data.publicUrl + '?v=' + Date.now();
+    const { error: pErr } = await supabase
+      .from('profiles').update({ avatar_url: url }).eq('id', ME.id);
+    if (pErr) return { ok: false, error: pErr.message };
+    if (auth?.refreshProfile) await auth.refreshProfile();
+    return { ok: true, url };
+  };
+
+  const handleClearAvatar = async () => {
+    if (!supabase || !ME?.id) return { ok: false, error: 'Not signed in.' };
+    // best-effort delete of any existing files in the user's folder
+    try {
+      const { data: files } = await supabase.storage.from('avatars').list(ME.id);
+      if (files && files.length) {
+        await supabase.storage.from('avatars').remove(files.map(f => `${ME.id}/${f.name}`));
+      }
+    } catch (e) { /* ignore — column update is what matters */ }
+    const { error } = await supabase
+      .from('profiles').update({ avatar_url: null }).eq('id', ME.id);
+    if (error) return { ok: false, error: error.message };
+    if (auth?.refreshProfile) await auth.refreshProfile();
+    return { ok: true };
   };
 
   // ─── Edit profile
@@ -571,7 +649,7 @@ function TiledApp({ tweaks }) {
     const tempId = 'tmp_' + Date.now();
     const optimistic = {
       id: tempId, tile_id: tileId, body: trimmed, time: 'now',
-      author: { handle: ME.handle, avatar: ME.avatar },
+      author: { handle: ME.handle, avatar: ME.avatar, avatar_url: ME.avatar_url },
     };
     setComments(prev => ({ ...prev, [tileId]: [...(prev[tileId] || []), optimistic] }));
     setTiles(prev => prev.map(x => x.id === tileId ? { ...x, comments: x.comments + 1 } : x));
@@ -579,7 +657,7 @@ function TiledApp({ tweaks }) {
     const { data, error } = await supabase
       .from('comments')
       .insert({ tile_id: tileId, author_id: ME.id, body: trimmed })
-      .select('*, author:profiles!comments_author_id_fkey(username,avatar)')
+      .select('*, author:profiles!comments_author_id_fkey(username,avatar,avatar_url)')
       .single();
     if (error) {
       console.warn('[tiled] comment failed:', error.message);
@@ -723,13 +801,25 @@ function TiledApp({ tweaks }) {
               allTags={allTags} tagFilter={tagFilter} setTagFilter={setTagFilter}
               userFilter={userFilter} setUserFilter={setUserFilter}
               onCompose={() => setComposing(true)}
-              onProfile={() => { setOnProfile(p => !p); setView('feed'); }}
+              onProfile={() => {
+                if (viewingProfileId) {
+                  // currently looking at someone else — switch to my own profile
+                  setViewingProfileId(null);
+                  setViewedProfile(null);
+                  setOnProfile(true);
+                  setView('feed');
+                } else {
+                  setOnProfile(p => !p);
+                  setView('feed');
+                }
+              }}
               isOnProfile={onProfile}
               onNotifications={handleOpenNotifications}
               notifUnread={notifications.filter(n => n.unread).length}
               onAdmin={() => setAdminOpen(true)}
               onFollow={handleFollow}
               followingIds={followingIds}
+              onShowProfile={openProfileForUser}
               user={ME}
               t={t} />
 
@@ -740,19 +830,45 @@ function TiledApp({ tweaks }) {
           <NewTilesChip count={pendingNew.length} onClick={revealPending} />
         )}
         {onProfile ? (
-          <ProfileHeader
-            view={view} setView={setView}
-            likedCount={tiles.filter(x => x.liked && !x.private).length}
-            savedCount={tiles.filter(x => x.saved && !x.private).length}
-            postCount={tiles.filter(x => x.author.handle === ME.handle).length}
-            followerCount={myStats.follower_count}
-            followingCount={myStats.following_count}
-            user={ME}
-            onLogout={auth?.logout}
-            onEdit={() => setEditProfileOpen(true)}
-            onShowFollowers={() => setFollowListOpen('followers')}
-            onShowFollowing={() => setFollowListOpen('following')}
-            mode={mode} />
+          viewingProfileId ? (
+            <ProfileHeader
+              isMe={false}
+              user={viewedProfile ? {
+                id: viewedProfile.id,
+                handle: viewedProfile.username,
+                name: viewedProfile.name,
+                avatar: viewedProfile.avatar,
+                avatar_url: viewedProfile.avatar_url,
+                role: viewedProfile.role,
+                bio: viewedProfile.bio,
+                createdAt: viewedProfile.created_at,
+              } : { handle: '', name: '', avatar: '··' }}
+              loading={viewedProfileLoading}
+              postCount={tiles.filter(x => x.author.id === viewingProfileId).length}
+              followerCount={viewedProfile?.follower_count || 0}
+              followingCount={viewedProfile?.following_count || 0}
+              isFollowing={followingIds.has(viewingProfileId)}
+              onFollow={() => handleFollow(viewingProfileId)}
+              onShowFollowers={() => setFollowListOpen('followers')}
+              onShowFollowing={() => setFollowListOpen('following')}
+              onBack={exitOtherProfile}
+              mode={mode} />
+          ) : (
+            <ProfileHeader
+              isMe={true}
+              view={view} setView={setView}
+              likedCount={tiles.filter(x => x.liked && !x.private).length}
+              savedCount={tiles.filter(x => x.saved && !x.private).length}
+              postCount={tiles.filter(x => x.author.handle === ME.handle).length}
+              followerCount={myStats.follower_count}
+              followingCount={myStats.following_count}
+              user={ME}
+              onLogout={auth?.logout}
+              onEdit={() => setEditProfileOpen(true)}
+              onShowFollowers={() => setFollowListOpen('followers')}
+              onShowFollowing={() => setFollowListOpen('following')}
+              mode={mode} />
+          )
         ) : (
           <FeedHeader mode={mode} view={view} count={visibleTiles.length}
                       tagFilter={tagFilter} onClearTag={() => setTagFilter(null)}
@@ -818,6 +934,7 @@ function TiledApp({ tweaks }) {
       {commentRail && !expandedTile && (
         <CommentRail tile={tiles.find(x => x.id === commentRail)}
                      comments={comments[commentRail] || []}
+                     me={ME}
                      onClose={() => setCommentRail(null)}
                      onComment={(body) => handleAddComment(commentRail, body)} />
       )}
@@ -837,16 +954,19 @@ function TiledApp({ tweaks }) {
       {editProfileOpen && (
         <EditProfileModal user={ME}
                           onClose={() => setEditProfileOpen(false)}
-                          onSave={handleSaveProfile} />
+                          onSave={handleSaveProfile}
+                          onUploadAvatar={handleUploadAvatar}
+                          onClearAvatar={handleClearAvatar} />
       )}
 
       {followListOpen && (
         <FollowListModal tab={followListOpen}
-                         ownerId={ME.id}
-                         ownerName={ME.name}
+                         ownerId={viewingProfileId || ME.id}
+                         ownerName={viewingProfileId ? (viewedProfile?.name || '') : ME.name}
                          me={ME}
                          followingIds={followingIds}
                          onFollow={handleFollow}
+                         onOpenProfile={(uid) => { setFollowListOpen(null); openProfileForUser(uid); }}
                          onClose={() => setFollowListOpen(null)} />
       )}
 
