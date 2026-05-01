@@ -5,11 +5,14 @@ const { useState: useState_t, useRef: useRef_t, useEffect: useEffect_t } = React
 function Tile({ tile, comments, dismissing, me, onDismiss, onLike, onSave, onDelete, onExpand, onOpenComments, onVote, onTag, t }) {
   const [drag, setDrag] = useState_t({ x: 0, dragging: false });
   const [menuOpen, setMenuOpen] = useState_t(false);
+  const [confirmingDelete, setConfirmingDelete] = useState_t(false);
   const startRef = useRef_t(0);
   const tileRef = useRef_t(null);
   const isAuthor = me && tile.author && me.handle === tile.author.handle;
   const isStaff = me && (me.role === 'admin' || me.role === 'owner');
   const canDelete = isAuthor || isStaff;
+
+  const closeMenu = () => { setMenuOpen(false); setConfirmingDelete(false); };
 
   const handleExpand = () => {
     const rect = tileRef.current?.getBoundingClientRect();
@@ -74,29 +77,40 @@ function Tile({ tile, comments, dismissing, me, onDismiss, onLike, onSave, onDel
         </div>
         <div className="ti-tile-more-wrap ti-no-drag">
           <button className="ti-tile-btn ti-tile-more" aria-label="more"
-                  onClick={(e) => { e.stopPropagation(); setMenuOpen(o => !o); }}>
+                  onClick={(e) => { e.stopPropagation(); setMenuOpen(o => !o); setConfirmingDelete(false); }}>
             <span /><span /><span />
           </button>
           {menuOpen && (
             <>
               <div className="ti-tile-menu-veil"
-                   onClick={(e) => { e.stopPropagation(); setMenuOpen(false); }} />
+                   onClick={(e) => { e.stopPropagation(); closeMenu(); }} />
               <div className="ti-tile-menu" onClick={(e) => e.stopPropagation()}>
-                {canDelete ? (
-                  <button className="ti-tile-menu-item ti-tile-menu-danger"
-                          onClick={() => {
-                            setMenuOpen(false);
-                            if (window.confirm(isAuthor ? 'Delete this tile?' : `Delete @${tile.author.handle}'s tile? This is a moderation action.`)) {
-                              onDelete && onDelete();
-                            }
-                          }}>
+                {!canDelete ? (
+                  <div className="ti-tile-menu-empty">No actions</div>
+                ) : !confirmingDelete ? (
+                  <button type="button" className="ti-tile-menu-item ti-tile-menu-danger"
+                          onClick={() => setConfirmingDelete(true)}>
                     <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6">
                       <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>
                     </svg>
                     <span>{isAuthor ? 'Delete tile' : 'Remove (moderate)'}</span>
                   </button>
                 ) : (
-                  <div className="ti-tile-menu-empty">No actions</div>
+                  <div className="ti-tile-menu-confirm">
+                    <div className="ti-tile-menu-confirm-q">
+                      {isAuthor ? 'Delete this tile?' : `Remove @${tile.author.handle}'s tile?`}
+                    </div>
+                    <div className="ti-tile-menu-confirm-actions">
+                      <button type="button" className="ti-tile-menu-cancel"
+                              onClick={() => setConfirmingDelete(false)}>
+                        Cancel
+                      </button>
+                      <button type="button" className="ti-tile-menu-confirm-yes"
+                              onClick={() => { closeMenu(); onDelete && onDelete(); }}>
+                        {isAuthor ? 'Delete' : 'Remove'}
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
             </>

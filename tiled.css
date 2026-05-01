@@ -2949,27 +2949,80 @@ button { font-family: inherit; }
 .ti-tile-menu-item {
   display: flex; align-items: center; gap: 8px;
   width: 100%;
-  padding: 8px 10px;
+  padding: 11px 12px;
   background: transparent;
   border: 0;
   color: var(--text);
-  font-size: 12.5px;
+  font-size: 13px;
   letter-spacing: -0.005em;
   text-align: left;
   border-radius: 7px;
   cursor: pointer;
+  -webkit-tap-highlight-color: rgba(255,255,255,0.05);
 }
-.ti-tile-menu-item:hover { background: rgba(255,255,255,0.06); }
+@media (hover: hover) {
+  .ti-tile-menu-item:hover { background: rgba(255,255,255,0.06); }
+}
+.ti-tile-menu-item:active { background: rgba(255,255,255,0.08); }
 .ti-tile-menu-danger { color: oklch(0.78 0.16 25); }
-.ti-tile-menu-danger:hover {
-  background: color-mix(in oklch, oklch(0.7 0.16 25) 10%, transparent);
-  color: oklch(0.85 0.18 25);
+@media (hover: hover) {
+  .ti-tile-menu-danger:hover {
+    background: color-mix(in oklch, oklch(0.7 0.16 25) 10%, transparent);
+    color: oklch(0.85 0.18 25);
+  }
+}
+.ti-tile-menu-danger:active {
+  background: color-mix(in oklch, oklch(0.7 0.16 25) 14%, transparent);
 }
 .ti-tile-menu-empty {
-  padding: 10px 12px;
+  padding: 11px 12px;
   font-size: 11.5px;
   color: var(--text-3);
   font-style: italic;
+}
+
+/* In-menu confirm state — replaces native window.confirm on mobile webkit */
+.ti-tile-menu-confirm {
+  display: flex; flex-direction: column;
+  gap: 8px;
+  padding: 10px 10px 8px;
+}
+.ti-tile-menu-confirm-q {
+  font-size: 12.5px;
+  color: var(--text);
+  letter-spacing: -0.005em;
+}
+.ti-tile-menu-confirm-actions {
+  display: flex; gap: 6px;
+}
+.ti-tile-menu-cancel,
+.ti-tile-menu-confirm-yes {
+  flex: 1;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font-display);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ti-tile-menu-cancel {
+  background: transparent;
+  border: 0.5px solid rgba(255,255,255,0.12);
+  color: var(--text-2);
+}
+.ti-tile-menu-cancel:active { background: rgba(255,255,255,0.05); }
+.ti-tile-menu-confirm-yes {
+  background: linear-gradient(180deg, oklch(0.7 0.16 25) 0%, oklch(0.55 0.18 25) 100%);
+  border: 0;
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.15);
+}
+.ti-tile-menu-confirm-yes:active { transform: translateY(1px); }
+.ti-expanded-delete-confirm {
+  background: linear-gradient(180deg, oklch(0.7 0.16 25) 0%, oklch(0.55 0.18 25) 100%) !important;
+  border-color: oklch(0.55 0.18 25) !important;
+  color: #fff !important;
 }
 
 /* ───── ExpandedTile delete button + header actions ───── */
