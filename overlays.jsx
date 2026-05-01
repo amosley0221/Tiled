@@ -2,7 +2,10 @@
 
 const { useState: useState_o, useRef: useRef_o, useEffect: useEffect_o } = React;
 
-function ExpandedTile({ tile, comments, onClose, onLike, onSave, onComment, onVote, onTag, originRect, t }) {
+function ExpandedTile({ tile, comments, onClose, onLike, onSave, onDelete, onComment, onVote, onTag, originRect, me, t }) {
+  const isAuthor = me && tile.author && me.handle === tile.author.handle;
+  const isStaff = me && (me.role === 'admin' || me.role === 'owner');
+  const canDelete = isAuthor || isStaff;
   const [draft, setDraft] = useState_o('');
   const [phase, setPhase] = useState_o('opening'); // 'opening' | 'open' | 'closing'
   const expandedRef = useRef_o(null);
@@ -91,7 +94,23 @@ function ExpandedTile({ tile, comments, onClose, onLike, onSave, onComment, onVo
                 <div className="ti-author-handle">@{tile.author.handle} · {tile.time}</div>
               </div>
             </div>
-            <button className="ti-follow">Follow</button>
+            <div className="ti-expanded-hd-actions">
+              {canDelete && (
+                <button className="ti-expanded-delete"
+                        onClick={() => {
+                          if (window.confirm(isAuthor ? 'Delete this tile?' : `Delete @${tile.author.handle}'s tile? This is a moderation action.`)) {
+                            onDelete && onDelete();
+                          }
+                        }}
+                        aria-label={isAuthor ? 'Delete tile' : 'Remove tile'}>
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6">
+                    <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>
+                  </svg>
+                  <span>{isAuthor ? 'Delete' : 'Remove'}</span>
+                </button>
+              )}
+              {!isAuthor && <button className="ti-follow">Follow</button>}
+            </div>
           </header>
 
           <div className="ti-expanded-body">

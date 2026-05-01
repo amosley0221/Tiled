@@ -2,7 +2,7 @@
 
 const { useState: useState_c, useEffect: useEffect_c, useRef: useRef_c } = React;
 
-function TopBar({ mode, setMode, filter, setFilter, view, setView, likedCount, savedCount, onCompose, onProfile, isOnProfile, allTags, tagFilter, setTagFilter, onNotifications, notifUnread, onAdmin, user, t }) {
+function TopBar({ mode, setMode, filter, setFilter, view, setView, likedCount, savedCount, onCompose, onProfile, isOnProfile, allTags, tagFilter, setTagFilter, userFilter, setUserFilter, onNotifications, notifUnread, onAdmin, user, t }) {
   const notifBtnRef = useRef_c(null);
   const handleBell = () => {
     const r = notifBtnRef.current?.getBoundingClientRect();
@@ -27,7 +27,8 @@ function TopBar({ mode, setMode, filter, setFilter, view, setView, likedCount, s
 
       <div className="ti-top-r">
         <FilterPill filter={filter} setFilter={setFilter} />
-        <SearchPopover allTags={allTags} tagFilter={tagFilter} setTagFilter={setTagFilter} />
+        <SearchPopover allTags={allTags} tagFilter={tagFilter} setTagFilter={setTagFilter}
+                       userFilter={userFilter} setUserFilter={setUserFilter} />
         {isStaff && (
           <button className={`ti-icn-btn ti-staff ti-staff-${user.role}`}
                   aria-label={`${user.role} panel`}
@@ -62,14 +63,16 @@ function TopBar({ mode, setMode, filter, setFilter, view, setView, likedCount, s
   );
 }
 
-function SearchPopover({ allTags, tagFilter, setTagFilter }) {
+function SearchPopover({ allTags, tagFilter, setTagFilter, userFilter, setUserFilter }) {
   const [open, setOpen] = useState_c(false);
   const [q, setQ] = useState_c('');
+  const [users, setUsers] = useState_c([]);
   const inputRef = useRef_c(null);
+  const supabase = window.supabaseClient;
 
   useEffect_c(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 0);
-    else setQ('');
+    else { setQ(''); setUsers([]); }
   }, [open]);
 
   useEffect_c(() => {
@@ -78,31 +81,65 @@ function SearchPopover({ allTags, tagFilter, setTagFilter }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
 
-  const cleaned = q.trim().toLowerCase().replace(/^#/, '');
-  const matches = (allTags || [])
-    .map(([t, count]) => ({ tag: t, count }))
-    .filter(({ tag }) => !cleaned || tag.includes(cleaned))
-    .slice(0, 8);
+  // Detect search mode: leading "#" forces tag-only, "@" forces user-only,
+  // otherwise both are searched.
+  const raw = q.trim();
+  const tagMode  = raw.startsWith('#');
+  const userMode = raw.startsWith('@');
+  const cleaned  = raw.toLowerCase().replace(/^[#@]/, '');
 
-  const apply = (tag) => { setTagFilter(tag); setOpen(false); };
+  // Tags are pre-loaded; just filter client-side.
+  const tagMatches = userMode ? [] : (allTags || [])
+    .map(([tag, count]) => ({ tag, count }))
+    .filter(({ tag }) => !cleaned || tag.includes(cleaned))
+    .slice(0, 6);
+
+  // Users are queried live against profiles, debounced.
+  useEffect_c(() => {
+    if (tagMode || !supabase) { setUsers([]); return; }
+    if (!cleaned) { setUsers([]); return; }
+    let mounted = true;
+    const t = setTimeout(async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, username, name, avatar, role')
+        .or(`username.ilike.%${cleaned}%,name.ilike.%${cleaned}%`)
+        .limit(6);
+      if (!mounted) return;
+      if (error) { console.warn('[tiled] user search:', error.message); setUsers([]); return; }
+      setUsers(data || []);
+    }, 180);
+    return () => { mounted = false; clearTimeout(t); };
+  }, [cleaned, tagMode]);
+
+  const applyTag = (tag) => { setTagFilter(tag); setUserFilter && setUserFilter(null); setOpen(false); };
+  const applyUser = (u) => {
+    setUserFilter && setUserFilter({ handle: u.username, name: u.name, avatar: u.avatar, role: u.role });
+    setTagFilter(null);
+    setOpen(false);
+  };
   const onKey = (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (matches[0]) apply(matches[0].tag);
-      else if (cleaned) apply(cleaned);
+      if (users[0] && (userMode || tagMatches.length === 0)) applyUser(users[0]);
+      else if (tagMatches[0]) applyTag(tagMatches[0].tag);
+      else if (users[0]) applyUser(users[0]);
+      else if (cleaned && !userMode) applyTag(cleaned);
     }
   };
+
+  const hasActiveFilter = !!tagFilter || !!userFilter;
 
   return (
     <div className="ti-search">
       <button
-        className={`ti-icn-btn${tagFilter ? ' is-active-filter' : ''}`}
+        className={`ti-icn-btn${hasActiveFilter ? ' is-active-filter' : ''}`}
         aria-label="search"
         onClick={() => setOpen(o => !o)}>
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.6">
           <circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
         </svg>
-        {tagFilter && <span className="ti-search-active-dot" />}
+        {hasActiveFilter && <span className="ti-search-active-dot" />}
       </button>
       {open && (
         <>
@@ -116,32 +153,66 @@ function SearchPopover({ allTags, tagFilter, setTagFilter }) {
                      value={q}
                      onChange={(e) => setQ(e.target.value)}
                      onKeyDown={onKey}
-                     placeholder="Search by #tag…" />
+                     placeholder="Search @people or #topics…" />
               {q && <button className="ti-search-clr" onClick={() => setQ('')}>✕</button>}
             </div>
 
-            <div className="ti-search-section-lbl">
-              {cleaned ? 'Matching tags' : 'Browse topics'}
-            </div>
-            <div className="ti-search-list">
-              {matches.length === 0 && (
-                <div className="ti-search-empty">No tags match "{cleaned}"</div>
-              )}
-              {matches.map(({ tag, count }) => (
-                <button key={tag}
-                        className={`ti-search-row${tagFilter === tag ? ' is-active' : ''}`}
-                        onClick={() => apply(tag)}>
-                  <span className="ti-search-row-tag">#{tag}</span>
-                  <span className="ti-search-row-count">{count} tile{count === 1 ? '' : 's'}</span>
-                </button>
-              ))}
-            </div>
+            {!tagMode && (
+              <>
+                <div className="ti-search-section-lbl">
+                  {cleaned ? 'People' : 'People · type to search'}
+                </div>
+                <div className="ti-search-list">
+                  {cleaned && users.length === 0 && (
+                    <div className="ti-search-empty">No users match "{cleaned}"</div>
+                  )}
+                  {users.map(u => (
+                    <button key={u.id}
+                            className={`ti-search-row ti-search-user${userFilter?.handle === u.username ? ' is-active' : ''}`}
+                            onClick={() => applyUser(u)}>
+                      <span className={`ti-search-user-avatar ti-role-ring-${u.role}`}>{u.avatar}</span>
+                      <span className="ti-search-user-meta">
+                        <span className="ti-search-user-name">
+                          {u.name}
+                          {u.role === 'owner' && <span className="ti-role-badge ti-role-badge-owner ti-role-badge-sm">Owner</span>}
+                          {u.role === 'admin' && <span className="ti-role-badge ti-role-badge-admin ti-role-badge-sm">Admin</span>}
+                        </span>
+                        <span className="ti-search-user-handle">@{u.username}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
 
-            {tagFilter && (
+            {!userMode && (
+              <>
+                <div className="ti-search-section-lbl">
+                  {cleaned ? 'Topics' : 'Browse topics'}
+                </div>
+                <div className="ti-search-list">
+                  {tagMatches.length === 0 && cleaned && (
+                    <div className="ti-search-empty">No tags match "{cleaned}"</div>
+                  )}
+                  {tagMatches.map(({ tag, count }) => (
+                    <button key={tag}
+                            className={`ti-search-row${tagFilter === tag ? ' is-active' : ''}`}
+                            onClick={() => applyTag(tag)}>
+                      <span className="ti-search-row-tag">#{tag}</span>
+                      <span className="ti-search-row-count">{count} tile{count === 1 ? '' : 's'}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {(tagFilter || userFilter) && (
               <div className="ti-search-foot">
                 <span className="ti-search-active-lbl">Active filter</span>
-                <span className="ti-search-active-tag">#{tagFilter}</span>
-                <button className="ti-search-clear-all" onClick={() => { setTagFilter(null); setOpen(false); }}>
+                <span className="ti-search-active-tag">
+                  {tagFilter ? '#' + tagFilter : '@' + userFilter.handle}
+                </span>
+                <button className="ti-search-clear-all" onClick={() => { setTagFilter(null); setUserFilter && setUserFilter(null); setOpen(false); }}>
                   Clear
                 </button>
               </div>
@@ -284,7 +355,7 @@ function FilterPill({ filter, setFilter }) {
   );
 }
 
-function FeedHeader({ mode, view, count, tagFilter, onClearTag }) {
+function FeedHeader({ mode, view, count, tagFilter, onClearTag, userFilter, onClearUser }) {
   let kicker, title;
   if (view === 'liked') {
     kicker = 'Library · Liked';
@@ -300,7 +371,8 @@ function FeedHeader({ mode, view, count, tagFilter, onClearTag }) {
     }[mode];
     kicker = meta.kicker; title = meta.title;
   }
-  if (tagFilter) title = `Filtered by #${tagFilter}`;
+  if (userFilter) title = `Tiles by ${userFilter.name || '@' + userFilter.handle}`;
+  else if (tagFilter) title = `Filtered by #${tagFilter}`;
 
   return (
     <div className="ti-feed-hd">
@@ -309,7 +381,9 @@ function FeedHeader({ mode, view, count, tagFilter, onClearTag }) {
       <div className="ti-feed-meta">
         <span>{count} tile{count === 1 ? '' : 's'}</span>
         <span className="ti-dot">·</span>
-        {tagFilter ? (
+        {userFilter ? (
+          <button className="ti-clear-tag" onClick={onClearUser}>clear @{userFilter.handle} ✕</button>
+        ) : tagFilter ? (
           <button className="ti-clear-tag" onClick={onClearTag}>clear filter ✕</button>
         ) : (
           <>

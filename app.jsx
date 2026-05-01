@@ -115,6 +115,7 @@ function TiledApp({ tweaks }) {
   const [composing, setComposing] = useState(false);
   const [filter, setFilter] = useState('all');
   const [tagFilter, setTagFilter] = useState(null);     // string | null
+  const [userFilter, setUserFilter] = useState(null);   // { handle, name, avatar } | null
   const [notifications, setNotifications] = useState([]);
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifOrigin, setNotifOrigin] = useState(null);
@@ -295,9 +296,10 @@ function TiledApp({ tweaks }) {
       if (mode !== 'pro' && (tile.kind === 'chart' || tile.kind === 'grid')) return false;
       if (filter !== 'all' && tile.kind !== filter) return false;
       if (tagFilter && !(tile.tags || []).includes(tagFilter)) return false;
+      if (userFilter && tile.author.handle !== userFilter.handle) return false;
       return true;
     });
-  }, [tiles, mode, filter, tagFilter, view, onProfile, ME.handle]);
+  }, [tiles, mode, filter, tagFilter, userFilter, view, onProfile, ME.handle]);
 
   // garbage-collect expired pending dismissals every 500ms (drives the countdown UI)
   const [, forceTick] = useState(0);
@@ -451,6 +453,32 @@ function TiledApp({ tweaks }) {
       console.warn('[tiled] like failed:', error.message);
       // revert
       setTiles(prev => prev.map(x => x.id === id ? tile : x));
+    }
+  };
+
+  // ─── Delete tile — author or admin/owner
+  const handleDeleteTile = async (id) => {
+    if (!supabase || !ME?.id) return;
+    const tile = tiles.find(x => x.id === id);
+    if (!tile) return;
+    const isAuthor = tile.author?.handle === ME.handle;
+    const isStaff = ME.role === 'admin' || ME.role === 'owner';
+    if (!isAuthor && !isStaff) return;
+    // close any open overlay tied to this tile
+    if (expanded === id) setExpanded(null);
+    if (commentRail === id) setCommentRail(null);
+    // optimistic remove
+    setTiles(prev => prev.filter(x => x.id !== id));
+    setComments(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    const { error } = await supabase.from('tiles').delete().eq('id', id);
+    if (error) {
+      console.warn('[tiled] delete failed:', error.message);
+      // revert by refetch
+      await loadFeed({ silent: true });
     }
   };
 
@@ -628,6 +656,7 @@ function TiledApp({ tweaks }) {
               likedCount={tiles.filter(x => x.liked && !x.private).length}
               savedCount={tiles.filter(x => x.saved && !x.private).length}
               allTags={allTags} tagFilter={tagFilter} setTagFilter={setTagFilter}
+              userFilter={userFilter} setUserFilter={setUserFilter}
               onCompose={() => setComposing(true)}
               onProfile={() => { setOnProfile(p => !p); setView('feed'); }}
               isOnProfile={onProfile}
@@ -654,7 +683,9 @@ function TiledApp({ tweaks }) {
             mode={mode} />
         ) : (
           <FeedHeader mode={mode} view={view} count={visibleTiles.length}
-                      tagFilter={tagFilter} onClearTag={() => setTagFilter(null)} t={t} />
+                      tagFilter={tagFilter} onClearTag={() => setTagFilter(null)}
+                      userFilter={userFilter} onClearUser={() => setUserFilter(null)}
+                      t={t} />
         )}
 
         <div className="ti-grid" data-density={t.density}>
@@ -676,9 +707,11 @@ function TiledApp({ tweaks }) {
                 <Tile key={tile.id} tile={tile}
                       comments={comments[tile.id] || []}
                       dismissing={false}
+                      me={ME}
                       onDismiss={() => handleDismiss(tile.id)}
                       onLike={() => handleLike(tile.id)}
                       onSave={() => handleSave(tile.id)}
+                      onDelete={() => handleDeleteTile(tile.id)}
                       onExpand={(rect) => { setExpandOrigin(rect); setExpanded(tile.id); }}
                       onOpenComments={() => setCommentRail(tile.id)}
                       onVote={(optId) => handleVote(tile.id, optId)}
@@ -700,8 +733,10 @@ function TiledApp({ tweaks }) {
                       comments={comments[expandedTile.id] || []}
                       onClose={() => setExpanded(null)}
                       originRect={expandOrigin}
+                      me={ME}
                       onLike={() => handleLike(expandedTile.id)}
                       onSave={() => handleSave(expandedTile.id)}
+                      onDelete={() => handleDeleteTile(expandedTile.id)}
                       onComment={(body) => handleAddComment(expandedTile.id, body)}
                       onVote={(optId) => handleVote(expandedTile.id, optId)}
                       onTag={(tag) => { setTagFilter(tag); setExpanded(null); }}
