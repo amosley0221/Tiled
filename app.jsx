@@ -120,6 +120,11 @@ function TiledApp({ tweaks }) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifOrigin, setNotifOrigin] = useState(null);
   const [adminOpen, setAdminOpen] = useState(false);
+  const [myStats, setMyStats] = useState({ follower_count: 0, following_count: 0 });
+  const [followingIds, setFollowingIds] = useState(new Set());  // who I follow
+  const [followerIds, setFollowerIds] = useState(new Set());    // who follows me
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
+  const [followListOpen, setFollowListOpen] = useState(null);   // 'followers' | 'following' | null
 
   const accentCSS = useMemo(() => ({
     gold: 'oklch(0.82 0.13 78)',
@@ -135,7 +140,7 @@ function TiledApp({ tweaks }) {
   const loadFeed = async ({ silent = false } = {}) => {
     if (!supabase || !ME?.id) return;
     if (!silent) setFeedLoading(true);
-    const [feedRes, commentsRes, likesRes, savesRes, dismRes, votesRes, notifRes] = await Promise.all([
+    const [feedRes, commentsRes, likesRes, savesRes, dismRes, votesRes, notifRes, statsRes, followingRes, followersRes] = await Promise.all([
       supabase.from('tile_feed').select('*').order('created_at', { ascending: false }),
       supabase.from('comments').select('*, author:profiles!comments_author_id_fkey(username,avatar)').order('created_at', { ascending: true }),
       supabase.from('likes').select('tile_id').eq('user_id', ME.id),
@@ -147,6 +152,9 @@ function TiledApp({ tweaks }) {
         .eq('recipient_id', ME.id)
         .order('created_at', { ascending: false })
         .limit(50),
+      supabase.from('profile_stats').select('follower_count, following_count').eq('id', ME.id).maybeSingle(),
+      supabase.from('follows').select('followee_id').eq('follower_id', ME.id),
+      supabase.from('follows').select('follower_id').eq('followee_id', ME.id),
     ]);
 
     if (feedRes.error)     console.warn('[tiled] feed load failed:',     feedRes.error.message);
@@ -156,6 +164,13 @@ function TiledApp({ tweaks }) {
     if (dismRes.error)     console.warn('[tiled] dismissals load failed:', dismRes.error.message);
     if (votesRes.error)    console.warn('[tiled] poll_votes load failed:', votesRes.error.message);
     if (notifRes.error)    console.warn('[tiled] notifications load failed:', notifRes.error.message);
+    if (statsRes.error)    console.warn('[tiled] profile stats load failed:', statsRes.error.message);
+    if (followingRes.error) console.warn('[tiled] following load failed:', followingRes.error.message);
+    if (followersRes.error) console.warn('[tiled] followers load failed:', followersRes.error.message);
+
+    setMyStats(statsRes.data || { follower_count: 0, following_count: 0 });
+    setFollowingIds(new Set((followingRes.data || []).map(r => r.followee_id)));
+    setFollowerIds(new Set((followersRes.data || []).map(r => r.follower_id)));
 
     const likedSet = new Set((likesRes.data || []).map(r => r.tile_id));
     const savedSet = new Set((savesRes.data || []).map(r => r.tile_id));
@@ -456,6 +471,56 @@ function TiledApp({ tweaks }) {
     }
   };
 
+  // ─── Follow / Unfollow another user
+  const handleFollow = async (userId) => {
+    if (!supabase || !ME?.id || !userId || userId === ME.id) return;
+    const wasFollowing = followingIds.has(userId);
+    // optimistic update
+    setFollowingIds(prev => {
+      const next = new Set(prev);
+      if (wasFollowing) next.delete(userId); else next.add(userId);
+      return next;
+    });
+    setMyStats(prev => ({
+      ...prev,
+      following_count: Math.max(0, (prev.following_count || 0) + (wasFollowing ? -1 : 1)),
+    }));
+    const op = wasFollowing
+      ? supabase.from('follows').delete().match({ follower_id: ME.id, followee_id: userId })
+      : supabase.from('follows').insert({ follower_id: ME.id, followee_id: userId });
+    const { error } = await op;
+    if (error) {
+      console.warn('[tiled] follow failed:', error.message);
+      // revert
+      setFollowingIds(prev => {
+        const next = new Set(prev);
+        if (wasFollowing) next.add(userId); else next.delete(userId);
+        return next;
+      });
+      setMyStats(prev => ({
+        ...prev,
+        following_count: Math.max(0, (prev.following_count || 0) + (wasFollowing ? 1 : -1)),
+      }));
+    }
+  };
+
+  // ─── Edit profile
+  const handleSaveProfile = async ({ name, avatar, bio }) => {
+    if (!supabase || !ME?.id) return { ok: false, error: 'Not signed in.' };
+    const cleanAvatar = (avatar || '').slice(0, 4).toUpperCase();
+    const cleanName = (name || '').trim().slice(0, 60);
+    const cleanBio = (bio || '').trim().slice(0, 200);
+    if (!cleanName) return { ok: false, error: 'Name is required.' };
+    if (!cleanAvatar) return { ok: false, error: 'Avatar is required (1–4 letters).' };
+    const { error } = await supabase
+      .from('profiles')
+      .update({ name: cleanName, avatar: cleanAvatar, bio: cleanBio })
+      .eq('id', ME.id);
+    if (error) return { ok: false, error: error.message };
+    if (auth?.refreshProfile) await auth.refreshProfile();
+    return { ok: true };
+  };
+
   // ─── Delete tile — author or admin/owner
   const handleDeleteTile = async (id) => {
     if (!supabase || !ME?.id) return;
@@ -663,6 +728,8 @@ function TiledApp({ tweaks }) {
               onNotifications={handleOpenNotifications}
               notifUnread={notifications.filter(n => n.unread).length}
               onAdmin={() => setAdminOpen(true)}
+              onFollow={handleFollow}
+              followingIds={followingIds}
               user={ME}
               t={t} />
 
@@ -678,8 +745,13 @@ function TiledApp({ tweaks }) {
             likedCount={tiles.filter(x => x.liked && !x.private).length}
             savedCount={tiles.filter(x => x.saved && !x.private).length}
             postCount={tiles.filter(x => x.author.handle === ME.handle).length}
+            followerCount={myStats.follower_count}
+            followingCount={myStats.following_count}
             user={ME}
             onLogout={auth?.logout}
+            onEdit={() => setEditProfileOpen(true)}
+            onShowFollowers={() => setFollowListOpen('followers')}
+            onShowFollowing={() => setFollowListOpen('following')}
             mode={mode} />
         ) : (
           <FeedHeader mode={mode} view={view} count={visibleTiles.length}
@@ -760,6 +832,22 @@ function TiledApp({ tweaks }) {
 
       {adminOpen && (ME.role === 'admin' || ME.role === 'owner') && (
         <AdminPanel user={ME} onClose={() => setAdminOpen(false)} />
+      )}
+
+      {editProfileOpen && (
+        <EditProfileModal user={ME}
+                          onClose={() => setEditProfileOpen(false)}
+                          onSave={handleSaveProfile} />
+      )}
+
+      {followListOpen && (
+        <FollowListModal tab={followListOpen}
+                         ownerId={ME.id}
+                         ownerName={ME.name}
+                         me={ME}
+                         followingIds={followingIds}
+                         onFollow={handleFollow}
+                         onClose={() => setFollowListOpen(null)} />
       )}
 
       {composing && (

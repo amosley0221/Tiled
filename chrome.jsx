@@ -2,7 +2,7 @@
 
 const { useState: useState_c, useEffect: useEffect_c, useRef: useRef_c } = React;
 
-function TopBar({ mode, setMode, filter, setFilter, view, setView, likedCount, savedCount, onCompose, onProfile, isOnProfile, allTags, tagFilter, setTagFilter, userFilter, setUserFilter, onNotifications, notifUnread, onAdmin, user, t }) {
+function TopBar({ mode, setMode, filter, setFilter, view, setView, likedCount, savedCount, onCompose, onProfile, isOnProfile, allTags, tagFilter, setTagFilter, userFilter, setUserFilter, onNotifications, notifUnread, onAdmin, onFollow, followingIds, user, t }) {
   const notifBtnRef = useRef_c(null);
   const handleBell = () => {
     const r = notifBtnRef.current?.getBoundingClientRect();
@@ -28,7 +28,8 @@ function TopBar({ mode, setMode, filter, setFilter, view, setView, likedCount, s
       <div className="ti-top-r">
         <FilterPill filter={filter} setFilter={setFilter} />
         <SearchPopover allTags={allTags} tagFilter={tagFilter} setTagFilter={setTagFilter}
-                       userFilter={userFilter} setUserFilter={setUserFilter} />
+                       userFilter={userFilter} setUserFilter={setUserFilter}
+                       me={user} followingIds={followingIds} onFollow={onFollow} />
         {isStaff && (
           <button className={`ti-icn-btn ti-staff ti-staff-${user.role}`}
                   aria-label={`${user.role} panel`}
@@ -63,7 +64,7 @@ function TopBar({ mode, setMode, filter, setFilter, view, setView, likedCount, s
   );
 }
 
-function SearchPopover({ allTags, tagFilter, setTagFilter, userFilter, setUserFilter }) {
+function SearchPopover({ allTags, tagFilter, setTagFilter, userFilter, setUserFilter, me, followingIds, onFollow }) {
   const [open, setOpen] = useState_c(false);
   const [q, setQ] = useState_c('');
   const [users, setUsers] = useState_c([]);
@@ -166,21 +167,32 @@ function SearchPopover({ allTags, tagFilter, setTagFilter, userFilter, setUserFi
                   {cleaned && users.length === 0 && (
                     <div className="ti-search-empty">No users match "{cleaned}"</div>
                   )}
-                  {users.map(u => (
-                    <button key={u.id}
-                            className={`ti-search-row ti-search-user${userFilter?.handle === u.username ? ' is-active' : ''}`}
-                            onClick={() => applyUser(u)}>
-                      <span className={`ti-search-user-avatar ti-role-ring-${u.role}`}>{u.avatar}</span>
-                      <span className="ti-search-user-meta">
-                        <span className="ti-search-user-name">
-                          {u.name}
-                          {u.role === 'owner' && <span className="ti-role-badge ti-role-badge-owner ti-role-badge-sm">Owner</span>}
-                          {u.role === 'admin' && <span className="ti-role-badge ti-role-badge-admin ti-role-badge-sm">Admin</span>}
-                        </span>
-                        <span className="ti-search-user-handle">@{u.username}</span>
-                      </span>
-                    </button>
-                  ))}
+                  {users.map(u => {
+                    const isMe = me && u.id === me.id;
+                    const isFollowing = followingIds?.has(u.id);
+                    return (
+                      <div key={u.id}
+                           className={`ti-search-row ti-search-user${userFilter?.handle === u.username ? ' is-active' : ''}`}>
+                        <button className="ti-search-user-main" onClick={() => applyUser(u)}>
+                          <span className={`ti-search-user-avatar ti-role-ring-${u.role}`}>{u.avatar}</span>
+                          <span className="ti-search-user-meta">
+                            <span className="ti-search-user-name">
+                              {u.name}
+                              {u.role === 'owner' && <span className="ti-role-badge ti-role-badge-owner ti-role-badge-sm">Owner</span>}
+                              {u.role === 'admin' && <span className="ti-role-badge ti-role-badge-admin ti-role-badge-sm">Admin</span>}
+                            </span>
+                            <span className="ti-search-user-handle">@{u.username}</span>
+                          </span>
+                        </button>
+                        {!isMe && onFollow && (
+                          <button className={`ti-follow-btn ti-follow-btn-sm${isFollowing ? ' is-following' : ''}`}
+                                  onClick={(e) => { e.stopPropagation(); onFollow(u.id); }}>
+                            {isFollowing ? 'Following' : 'Follow'}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </>
             )}
@@ -492,17 +504,18 @@ function ModeIndicator({ mode, view }) {
   return <div className="ti-mode-indicator" data-mode={mode}>{text}</div>;
 }
 
-function ProfileHeader({ user, view, setView, likedCount, savedCount, postCount, mode, onLogout }) {
+function ProfileHeader({ user, view, setView, likedCount, savedCount, postCount, mode, onLogout, onEdit, onShowFollowers, onShowFollowing, followerCount, followingCount }) {
   const u = user || {};
   const role = u.role || 'user';
   const joined = (() => {
-    // crude formatter — we only have ISO from auth.jsx
     if (!u.createdAt) return 'recently';
     try {
       const d = new Date(u.createdAt);
       return d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
     } catch (e) { return 'recently'; }
   })();
+  const followerN = Number.isFinite(followerCount) ? followerCount : 0;
+  const followingN = Number.isFinite(followingCount) ? followingCount : 0;
   return (
     <section className={`ti-profile ti-role-${role}`}>
       <div className="ti-gloss" />
@@ -518,15 +531,19 @@ function ProfileHeader({ user, view, setView, likedCount, savedCount, postCount,
           <div className="ti-profile-handle">@{u.handle || 'you'} · joined {joined}</div>
           <div className="ti-profile-bio">{u.bio || `Currently in ${mode} mode.`}</div>
           <div className="ti-profile-stats">
-            <span><strong>{postCount}</strong> tiles</span>
+            <span><strong>{postCount}</strong> tile{postCount === 1 ? '' : 's'}</span>
             <span className="ti-profile-stat-sep" />
-            <span><strong>1,284</strong> followers</span>
+            <button className="ti-profile-stat-btn" onClick={onShowFollowers}>
+              <strong>{followerN.toLocaleString()}</strong> follower{followerN === 1 ? '' : 's'}
+            </button>
             <span className="ti-profile-stat-sep" />
-            <span><strong>312</strong> following</span>
+            <button className="ti-profile-stat-btn" onClick={onShowFollowing}>
+              <strong>{followingN.toLocaleString()}</strong> following
+            </button>
           </div>
         </div>
         <div className="ti-profile-actions">
-          <button className="ti-profile-edit">Edit profile</button>
+          <button className="ti-profile-edit" onClick={onEdit}>Edit profile</button>
           {onLogout && (
             <button className="ti-profile-logout" onClick={onLogout}>
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6">

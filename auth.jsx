@@ -206,7 +206,19 @@ function AuthProvider({ children }) {
     setSession(null); setProfile(null);
   };
 
-  const value = { currentUser, login, signup, logout, initializing, pendingConfirmation };
+  // Re-fetch the profile row (used after the user edits their profile).
+  const refreshProfile = async () => {
+    if (!supabase || !session?.user?.id) return;
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', session.user.id)
+      .single();
+    if (error) { console.warn('[tiled] refreshProfile failed:', error.message); return; }
+    setProfile(data);
+  };
+
+  const value = { currentUser, login, signup, logout, initializing, pendingConfirmation, refreshProfile };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

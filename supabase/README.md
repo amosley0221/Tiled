@@ -65,6 +65,9 @@ exists` before each `create policy`, etc. — so you can re-run it after edits.
   `cast_poll_vote` RPC (lets non-authors vote), notification triggers
   (auto-insert on like/save/comment), and adds `tiles` + `notifications`
   to the realtime publication.
+- `0005_follows.sql` — `follows` table (follower_id → followee_id),
+  `profile_stats` view (live follower/following counts on top of profiles),
+  notification trigger on follow, and adds `follows` to realtime.
 
 Run them in order. All migrations are idempotent.
 
