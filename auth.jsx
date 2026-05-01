@@ -72,17 +72,20 @@ function useAuth() { return useContext_a(AuthContext); }
 function AuthProvider({ children }) {
   const [session, setSession] = useState_a(null);
   const [profile, setProfile] = useState_a(null);
-  const [loading, setLoading] = useState_a(true);
+  const [sessionChecked, setSessionChecked] = useState_a(false);
+  const [profileLoaded, setProfileLoaded] = useState_a(false);
   const [pendingConfirmation, setPendingConfirmation] = useState_a(null); // { email } | null
 
   // initial session check + listener
   useEffect_a(() => {
-    if (!supabase) { setLoading(false); return; }
+    if (!supabase) { setSessionChecked(true); setProfileLoaded(true); return; }
     let mounted = true;
     supabase.auth.getSession().then(({ data }) => {
       if (!mounted) return;
       setSession(data.session || null);
-      setLoading(false);
+      setSessionChecked(true);
+      // if there's no session, there's nothing more to load — unblock AuthGate
+      if (!data.session) setProfileLoaded(true);
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
       setSession(sess || null);
@@ -93,8 +96,14 @@ function AuthProvider({ children }) {
 
   // load profile when session changes
   useEffect_a(() => {
-    if (!supabase || !session?.user?.id) { setProfile(null); return; }
+    if (!supabase || !session?.user?.id) {
+      setProfile(null);
+      // session was cleared — no profile to wait for
+      if (sessionChecked) setProfileLoaded(true);
+      return;
+    }
     let mounted = true;
+    setProfileLoaded(false);
     supabase
       .from('profiles')
       .select('*')
@@ -102,11 +111,22 @@ function AuthProvider({ children }) {
       .single()
       .then(({ data, error }) => {
         if (!mounted) return;
-        if (error) { console.warn('[tiled] profile load failed:', error.message); setProfile(null); return; }
-        setProfile(data);
+        if (error) {
+          console.warn('[tiled] profile load failed:', error.message);
+          setProfile(null);
+        } else {
+          setProfile(data);
+        }
+        setProfileLoaded(true);
       });
     return () => { mounted = false; };
   }, [session?.user?.id]);
+
+  // initializing = we don't yet know whether the user is signed in.
+  // True until BOTH the initial getSession resolves AND (if a session
+  // exists) the profile fetch completes. This prevents AuthScreen from
+  // flashing on refresh between "session restored" and "profile loaded".
+  const initializing = !sessionChecked || !profileLoaded;
 
   const currentUser = useMemo_a(() => {
     if (!session || !profile) return null;
@@ -180,7 +200,7 @@ function AuthProvider({ children }) {
     setSession(null); setProfile(null);
   };
 
-  const value = { currentUser, login, signup, logout, loading, pendingConfirmation };
+  const value = { currentUser, login, signup, logout, initializing, pendingConfirmation };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
@@ -194,8 +214,8 @@ function friendlyAuthError(error) {
 }
 
 function AuthGate({ children }) {
-  const { currentUser, loading } = useAuth();
-  if (loading) return <AuthLoading />;
+  const { currentUser, initializing } = useAuth();
+  if (initializing) return <AuthLoading />;
   if (!currentUser) return <AuthScreen />;
   return children;
 }
