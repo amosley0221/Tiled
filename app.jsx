@@ -205,7 +205,7 @@ function TiledApp({ tweaks }) {
   const t = tweaks;
   const auth = useAuth();
   const ME = useMemo(() => auth?.currentUser
-    ? { handle: auth.currentUser.username, name: auth.currentUser.name, avatar: auth.currentUser.avatar, role: auth.currentUser.role, email: auth.currentUser.email, bio: auth.currentUser.bio, createdAt: auth.currentUser.createdAt }
+    ? { id: auth.currentUser.id, handle: auth.currentUser.username, name: auth.currentUser.name, avatar: auth.currentUser.avatar, role: auth.currentUser.role, email: auth.currentUser.email, bio: auth.currentUser.bio, createdAt: auth.currentUser.createdAt }
     : ME_FALLBACK,
   [auth?.currentUser]);
   const [mode, setMode] = useState('social');
