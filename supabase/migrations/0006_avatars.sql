@@ -16,7 +16,11 @@ alter table public.profiles add column if not exists avatar_url text;
 
 -- ──────────────────────────────────────────────────────────────────────────
 -- tile_feed view — pull in author_avatar_url
+-- We DROP first because Postgres won't let CREATE OR REPLACE VIEW change a
+-- column's name or position; the new view inserts avatar_url between
+-- author_avatar and author_role.
 -- ──────────────────────────────────────────────────────────────────────────
+drop view if exists public.tile_feed;
 create or replace view public.tile_feed as
   select
     t.id,
@@ -44,8 +48,9 @@ create or replace view public.tile_feed as
   join public.profiles p on p.id = t.author_id;
 
 -- ──────────────────────────────────────────────────────────────────────────
--- profile_stats view — include avatar_url
+-- profile_stats view — include avatar_url (drop first, same reason as above)
 -- ──────────────────────────────────────────────────────────────────────────
+drop view if exists public.profile_stats;
 create or replace view public.profile_stats as
   select
     p.id,
