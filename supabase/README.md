@@ -64,6 +64,29 @@ exists` before each `create policy`, etc. — so you can re-run it after edits.
 - `0004_data_layer.sql` — `tile_feed` view (joined query for the feed),
   `cast_poll_vote` RPC (lets non-authors vote), notification triggers
   (auto-insert on like/save/comment), and adds `tiles` + `notifications`
-  to the realtime publication for the next migration step.
+  to the realtime publication.
 
 Run them in order. All migrations are idempotent.
+
+## Demo data (optional)
+
+Once the migrations are applied, the feed will be empty until users
+post tiles. To populate it with example content:
+
+1. SQL Editor → New query → paste `seed/01_demo_data.sql` → Run
+2. Six demo accounts are created with `@tiled.demo` emails and bios
+   prefixed `[demo]`. They appear immediately in everyone's feed
+   (RLS only blocks private tiles, not whose author it is).
+
+The seed is **idempotent** — re-running deletes existing demo tiles
+and recreates them, so you always end in a clean known state.
+
+To **remove** demo data when you're done testing:
+
+```
+SQL Editor → New query → paste seed/99_remove_demo_data.sql → Run
+```
+
+This drops the `@tiled.demo` auth users; FK cascades take care of
+their profiles, tiles, comments, likes, saves, votes, and
+notifications. Real user accounts are untouched.

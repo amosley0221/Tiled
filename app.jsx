@@ -190,6 +190,61 @@ function TiledApp({ tweaks }) {
     }
   };
 
+  // ────────────────────────────────────────────────────────────────────
+  // Realtime: when someone else posts a tile, queue it as pendingNew so
+  // the "X new tiles" chip and pull-to-refresh both surface live activity.
+  // When a notification arrives for me, prepend it to the inbox.
+  // RLS gates these subscriptions, so private tiles from others never
+  // reach this client.
+  // ────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!supabase || !ME?.id) return;
+
+    const tilesChannel = supabase
+      .channel('rt-tiles')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tiles' }, async (payload) => {
+        const row = payload.new;
+        if (!row || row.author_id === ME.id) return;
+        // Fetch the joined view row so we get author + counts + tags
+        const { data, error } = await supabase
+          .from('tile_feed').select('*').eq('id', row.id).maybeSingle();
+        if (error || !data) return;
+        const shaped = shapeTile(data, new Set(), new Set(), {});
+        setPendingNew(prev => {
+          if (prev.find(p => p.id === shaped.id) || prev.length >= 12) return prev;
+          return [shaped, ...prev];
+        });
+      })
+      .subscribe();
+
+    const notifChannel = supabase
+      .channel('rt-notifications')
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'notifications',
+        filter: `recipient_id=eq.${ME.id}`,
+      }, async (payload) => {
+        const row = payload.new;
+        if (!row) return;
+        const { data, error } = await supabase
+          .from('notifications')
+          .select('*, actor:profiles!notifications_actor_id_fkey(username,name,avatar)')
+          .eq('id', row.id)
+          .maybeSingle();
+        if (error || !data) return;
+        const shaped = shapeNotification(data);
+        setNotifications(prev => {
+          if (prev.find(n => n.id === shaped.id)) return prev;
+          return [shaped, ...prev];
+        });
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(tilesChannel);
+      supabase.removeChannel(notifChannel);
+    };
+  }, [ME?.id]);
+
   useEffect(() => {
     if (!ME?.id) return;
     // Hydrate from cache first so the feed paints instantly on reload,
