@@ -437,16 +437,17 @@ button { font-family: inherit; }
 @media (max-width: 600px) {
   .ti-grid, .ti-grid[data-density="compact"] { grid-template-columns: 1fr; }
 
-  /* Tile-by-tile snap scrolling on phones (Reels-style). Each tile is a
-     snap point; momentum still works inside the feed but stops on the
-     next tile rather than blowing past several. The feed/profile header
-     above the grid scrolls normally before the first tile locks in. */
-  .ti-main {
+  /* Tile-by-tile snap scrolling on phones (Reels-style). The top bar is
+     sticky, which means the document/html is the actual scroller — not
+     .ti-main. Apply snap rules to html so iOS Safari honors them.
+     scroll-padding-top reserves space for the sticky top bar so snapped
+     tiles aren't hidden behind it. */
+  html {
     scroll-snap-type: y mandatory;
-    scroll-padding-top: 16px;
+    scroll-padding-top: 64px;
   }
-  .ti-grid > .ti-tile,
-  .ti-grid > .ti-undo-slot {
+  .ti-tile,
+  .ti-undo-slot {
     scroll-snap-align: start;
     scroll-snap-stop: always;
   }
