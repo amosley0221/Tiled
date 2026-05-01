@@ -305,7 +305,7 @@ function TiledApp({ tweaks }) {
   const revealPending = async () => {
     setRefreshing(true);
     if (mainRef.current) mainRef.current.scrollTo({ top: 0, behavior: 'smooth' });
-    await loadFeed();
+    await loadFeed({ silent: true });
     setPendingNew([]);
     setPullProgress(0);
     setRefreshing(false);
@@ -538,12 +538,30 @@ function TiledApp({ tweaks }) {
       if (tagErr) console.warn('[tiled] tag insert failed:', tagErr.message);
     }
     // refetch the feed so the new tile appears with correct counts/relations
-    await loadFeed();
+    await loadFeed({ silent: true });
     if (mainRef.current) mainRef.current.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const expandedTile = expanded ? tiles.find(x => x.id === expanded) : null;
   const gloss = t.gloss / 100;
+
+  // First-ever load for this user (no cache yet) → keep the auth-style
+  // loading bar visible instead of swapping to a grey skeleton. After the
+  // first successful fetch the cache exists and reloads paint instantly.
+  if (feedLoading && tiles.length === 0) {
+    return (
+      <div className="ti-auth-root" style={{ '--accent': accentCSS, '--gloss': gloss }}>
+        <div className="ti-auth-bg" />
+        <div className="ti-auth-loading">
+          <div className="ti-logo ti-auth-logo">
+            <span className="ti-logo-mark"><span /><span /><span /><span /></span>
+            <span className="ti-logo-word">Tiled</span>
+          </div>
+          <div className="ti-auth-loading-bar"><span /></div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="ti-root" data-mode={mode} style={{
@@ -586,7 +604,12 @@ function TiledApp({ tweaks }) {
 
         <div className="ti-grid" data-density={t.density}>
           {feedLoading ? (
-            <FeedSkeleton density={t.density} />
+            tiles.length > 0
+              // refetching with stale data showing → soft skeleton (rare path now)
+              ? <FeedSkeleton density={t.density} />
+              // very first load with no cache → unified loading bar that matches
+              // the auth screen, so it feels continuous instead of swapping styles
+              : null
           ) : (
             <>
               {visibleTiles.map(tile => (
