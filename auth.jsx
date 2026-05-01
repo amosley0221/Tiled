@@ -56,12 +56,25 @@ function loadUsers() {
 function saveUsers(users) {
   localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(users));
 }
+// Sessions can be persistent (localStorage — survives browser close) or
+// ephemeral (sessionStorage — cleared on browser close). On read, a
+// remembered session takes priority, then the per-tab session is checked.
 function loadSession() {
-  try { return localStorage.getItem(AUTH_SESSION_KEY) || null; } catch (e) { return null; }
+  try {
+    return localStorage.getItem(AUTH_SESSION_KEY) ||
+           sessionStorage.getItem(AUTH_SESSION_KEY) || null;
+  } catch (e) { return null; }
 }
-function saveSession(emailLower) {
-  if (emailLower) localStorage.setItem(AUTH_SESSION_KEY, emailLower);
-  else localStorage.removeItem(AUTH_SESSION_KEY);
+function saveSession(emailLower, remember) {
+  try {
+    localStorage.removeItem(AUTH_SESSION_KEY);
+    sessionStorage.removeItem(AUTH_SESSION_KEY);
+  } catch (e) { /* ignore */ }
+  if (!emailLower) return;
+  try {
+    if (remember) localStorage.setItem(AUTH_SESSION_KEY, emailLower);
+    else sessionStorage.setItem(AUTH_SESSION_KEY, emailLower);
+  } catch (e) { /* ignore */ }
 }
 
 const AuthContext = createContext_a(null);
@@ -76,19 +89,19 @@ function AuthProvider({ children }) {
     return users.find(u => u.email.toLowerCase() === sessionEmail.toLowerCase()) || null;
   }, [users, sessionEmail]);
 
-  const login = (identifier, password) => {
+  const login = (identifier, password, remember = true) => {
     const id = identifier.trim().toLowerCase();
     const user = users.find(u =>
       u.email.toLowerCase() === id || u.username.toLowerCase() === id
     );
     if (!user) return { ok: false, error: 'No account found for that email or username.' };
     if (user.password !== password) return { ok: false, error: 'Incorrect password.' };
-    saveSession(user.email.toLowerCase());
+    saveSession(user.email.toLowerCase(), remember);
     setSessionEmail(user.email.toLowerCase());
     return { ok: true };
   };
 
-  const signup = ({ username, email, password }) => {
+  const signup = ({ username, email, password, remember = true }) => {
     const u = (username || '').trim();
     const e = (email || '').trim();
     if (!u) return { ok: false, error: 'Username is required.' };
@@ -113,11 +126,11 @@ function AuthProvider({ children }) {
     };
     const next = [...users, newUser];
     setUsers(next); saveUsers(next);
-    saveSession(e.toLowerCase()); setSessionEmail(e.toLowerCase());
+    saveSession(e.toLowerCase(), remember); setSessionEmail(e.toLowerCase());
     return { ok: true };
   };
 
-  const logout = () => { saveSession(null); setSessionEmail(null); };
+  const logout = () => { saveSession(null, false); setSessionEmail(null); };
 
   const value = { currentUser, login, signup, logout, users };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -191,8 +204,13 @@ function AuthScreen() {
         </header>
         {tab === 'login' ? <LoginForm onSwitch={() => setTab('signup')} /> : <SignupForm onSwitch={() => setTab('login')} />}
         <footer className="ti-auth-ft">
-          <span className="ti-auth-ft-eyebrow">Prototype</span>
-          <span>Try <code>yohan@tiled.app</code> · <code>Yohan2026!</code> (Owner) or <code>asha@tiled.app</code> · <code>Admin2026!</code> (Admin)</span>
+          <div className="ti-auth-ft-line">
+            <span className="ti-auth-ft-eyebrow">Prototype</span>
+            <span>Try <code>yohan@tiled.app</code> · <code>Yohan2026!</code> (Owner) or <code>asha@tiled.app</code> · <code>Admin2026!</code> (Admin)</span>
+          </div>
+          <div className="ti-auth-ft-note">
+            Accounts are stored on this device only — sign in on a different device or browser and you'll see a fresh state. Cross-device sync requires a server backend.
+          </div>
         </footer>
       </div>
     </div>
@@ -203,6 +221,7 @@ function LoginForm({ onSwitch }) {
   const { login } = useAuth();
   const [identifier, setIdentifier] = useState_a('');
   const [password, setPassword] = useState_a('');
+  const [remember, setRemember] = useState_a(true);
   const [error, setError] = useState_a(null);
 
   const submit = (e) => {
@@ -212,7 +231,7 @@ function LoginForm({ onSwitch }) {
       setError('Enter your email/username and password.');
       return;
     }
-    const r = login(identifier, password);
+    const r = login(identifier, password, remember);
     if (!r.ok) setError(r.error);
   };
 
@@ -232,6 +251,7 @@ function LoginForm({ onSwitch }) {
         <PasswordField value={password} onChange={setPassword}
                        autoComplete="current-password" />
       </label>
+      <RememberMe checked={remember} onChange={setRemember} />
       {error && <div className="ti-auth-err">{error}</div>}
       <button className="ti-auth-submit" type="submit">Sign in</button>
       <div className="ti-auth-switch">
@@ -241,11 +261,36 @@ function LoginForm({ onSwitch }) {
   );
 }
 
+function RememberMe({ checked, onChange }) {
+  return (
+    <label className="ti-auth-remember">
+      <span className={`ti-auth-checkbox${checked ? ' is-checked' : ''}`} aria-hidden="true">
+        {checked && (
+          <svg viewBox="0 0 12 12" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="m2 6 3 3 5-6"/>
+          </svg>
+        )}
+      </span>
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)}
+             className="ti-auth-checkbox-real" />
+      <span className="ti-auth-remember-text">
+        <span className="ti-auth-remember-line">Stay signed in</span>
+        <span className="ti-auth-remember-hint">
+          {checked
+            ? 'You\'ll stay signed in on this device until you sign out.'
+            : 'You\'ll be signed out when you close the browser.'}
+        </span>
+      </span>
+    </label>
+  );
+}
+
 function SignupForm({ onSwitch }) {
   const { signup } = useAuth();
   const [username, setUsername] = useState_a('');
   const [email, setEmail] = useState_a('');
   const [password, setPassword] = useState_a('');
+  const [remember, setRemember] = useState_a(true);
   const [error, setError] = useState_a(null);
   const [touched, setTouched] = useState_a(false);
 
@@ -256,7 +301,7 @@ function SignupForm({ onSwitch }) {
     e?.preventDefault();
     setError(null);
     setTouched(true);
-    const r = signup({ username, email, password });
+    const r = signup({ username, email, password, remember });
     if (!r.ok) setError(r.error);
   };
 
@@ -296,6 +341,7 @@ function SignupForm({ onSwitch }) {
           </li>
         ))}
       </ul>
+      <RememberMe checked={remember} onChange={setRemember} />
       {error && <div className="ti-auth-err">{error}</div>}
       <button className="ti-auth-submit" type="submit" disabled={!allOk || !username.trim() || !email.trim()}>
         Create account
