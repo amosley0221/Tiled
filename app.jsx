@@ -5,201 +5,88 @@ const { useState, useEffect, useRef, useMemo } = React;
 // stable fallback used only on the very first render before AuthGate mounts
 const ME_FALLBACK = { handle: 'you', name: 'You', avatar: 'YO' };
 
-const SEED_TILES = [
-  { id: 't1', kind: 'photo', mode: 'social',
-    author: { handle: 'mira.jpg', name: 'Mira Okafor', avatar: 'MO' },
-    time: '12m', caption: 'fog rolling off the bay this morning. shutter wide open.',
-    media: { tone: 220, label: 'long exposure · 30s' },
-    tags: ['photography', 'sf-bay'],
-    likes: 142, comments: 8, liked: false, saved: false },
-  { id: 't2', kind: 'video', mode: 'social',
-    author: { handle: 'noahbeats', name: 'Noah Reyes', avatar: 'NR' },
-    time: '34m', caption: 'first run of the new sequencer patch',
-    media: { tone: 12, label: 'video · 0:42', duration: '0:42' },
-    tags: ['music', 'production'],
-    likes: 89, comments: 14, liked: true, saved: true },
-  { id: 't3', kind: 'text', mode: 'pro',
-    author: { handle: 'asha.r', name: 'Asha Rajan', avatar: 'AR' },
-    time: '1h', body: 'Shipping is a feature. The longer you sit on something the more it owns you, not the other way around.',
-    tags: ['startups', 'product'],
-    likes: 312, comments: 41, liked: false, saved: true },
-  { id: 't4', kind: 'audio', mode: 'social',
-    author: { handle: 'lume', name: 'Lume', avatar: 'LU' },
-    time: '2h', caption: 'voice memo — chord progression for the bridge',
-    media: { duration: '1:12', waveform: [0.3,0.5,0.7,0.4,0.8,0.6,0.9,0.7,0.5,0.8,0.6,0.4,0.7,0.9,0.5,0.6,0.8,0.4,0.7,0.5,0.6,0.8,0.7,0.4,0.6,0.5,0.7,0.4,0.3,0.5,0.6,0.4,0.7,0.5,0.3,0.4] },
-    tags: ['music'],
-    likes: 56, comments: 6, liked: false, saved: false },
-  { id: 't5', kind: 'live', mode: 'social',
-    author: { handle: 'kenji.live', name: 'Kenji Park', avatar: 'KP' },
-    time: 'now', caption: 'studio session — open mic',
-    media: { tone: 340, viewers: 1284 },
-    tags: ['music', 'live'],
-    likes: 0, comments: 0, liked: false, saved: false },
-  { id: 't6', kind: 'link', mode: 'pro',
-    author: { handle: 'tessa.w', name: 'Tessa Whitfield', avatar: 'TW' },
-    time: '3h', body: 'A piece on the economics of attention I keep coming back to.',
-    link: { domain: 'longform.org', title: 'The Compounding Cost of Distraction', excerpt: 'How the cheapest minute of your day became the most expensive one.' },
-    tags: ['reading', 'attention'],
-    likes: 71, comments: 11, liked: false, saved: false },
-  { id: 't7', kind: 'poll', mode: 'social',
-    author: { handle: 'devon', name: 'Devon Yu', avatar: 'DY' },
-    time: '4h', body: 'choosing a name for the new record',
-    poll: { options: [
-      { id: 'a', label: 'Slow Light', votes: 142 },
-      { id: 'b', label: 'Half-Tide', votes: 87 },
-      { id: 'c', label: 'After-Image', votes: 213 },
-    ], voted: null },
-    tags: ['music'],
-    likes: 24, comments: 19, liked: false, saved: false },
-  { id: 't8', kind: 'photo', mode: 'pro',
-    author: { handle: 'studio.frame', name: 'Frame Studio', avatar: 'FS' },
-    time: '5h', caption: 'concept boards for the Q3 campaign · final round',
-    media: { tone: 40, label: 'case study · 6 frames' },
-    tags: ['design', 'case-study'],
-    likes: 198, comments: 23, liked: true, saved: false },
-  { id: 't9', kind: 'text', mode: 'social',
-    author: { handle: 'rune', name: 'Rune Halvorsen', avatar: 'RH' },
-    time: '6h', body: 'late-night thought: every tool you use is also using you. choose carefully.',
-    tags: ['philosophy'],
-    likes: 421, comments: 58, liked: false, saved: false },
-  { id: 't10', kind: 'photo', mode: 'social',
-    author: { handle: 'iyla', name: 'Iyla Mendes', avatar: 'IM' },
-    time: '8h', caption: 'sunset, no filter, no caption',
-    media: { tone: 25, label: 'photo' },
-    tags: ['photography'],
-    likes: 67, comments: 4, liked: false, saved: false },
-  { id: 't11', kind: 'video', mode: 'pro',
-    author: { handle: 'arc.studio', name: 'Arc Studio', avatar: 'AS' },
-    time: '12h', caption: 'process reel — physical prototype week 04',
-    media: { tone: 200, label: 'reel · 1:18', duration: '1:18' },
-    tags: ['design', 'industrial'],
-    likes: 256, comments: 31, liked: false, saved: true },
-  { id: 't12', kind: 'text', mode: 'private',
-    author: { handle: 'yohan', name: 'Yohan Olivier', avatar: 'YO' },
-    time: '2d', body: 'note to self — outline for the talk. start with the question, not the framework.',
-    tags: ['notes'],
-    likes: 0, comments: 0, liked: false, saved: false, private: true },
-  { id: 't13', kind: 'photo', mode: 'social',
-    author: { handle: 'pitchside', name: 'Pitchside', avatar: 'PS' },
-    time: '1h', caption: 'derby night. north stand absolute scenes.',
-    media: { tone: 140, label: 'matchday · 89th min' },
-    tags: ['sports', 'arsenal', 'football'],
-    likes: 1284, comments: 207, liked: false, saved: false },
-  { id: 't14', kind: 'text', mode: 'social',
-    author: { handle: 'corner.flag', name: 'Corner Flag', avatar: 'CF' },
-    time: '3h', body: 'predicting Arsenal 2-1 tonight. Saka brace, Ødegaard quiet but key.',
-    tags: ['sports', 'arsenal', 'football'],
-    likes: 91, comments: 34, liked: false, saved: false },
-  { id: 't15', kind: 'chart', mode: 'pro',
-    author: { handle: 'metrics', name: 'Metrics Bot', avatar: 'MB' },
-    time: '40m', caption: 'Q3 weekly active users — up 24% over the quarter',
-    chart: { label: 'WAU · last 8 weeks', unit: 'thousands',
-      data: [
-        { label: 'W1', value: 42 }, { label: 'W2', value: 51 }, { label: 'W3', value: 58 },
-        { label: 'W4', value: 54 }, { label: 'W5', value: 67 }, { label: 'W6', value: 74 },
-        { label: 'W7', value: 81 }, { label: 'W8', value: 92 },
-      ] },
-    tags: ['analytics', 'growth'],
-    likes: 38, comments: 7, liked: false, saved: true },
-  { id: 't16', kind: 'grid', mode: 'pro',
-    author: { handle: 'ops', name: 'Ops Desk', avatar: 'OP' },
-    time: '2h', caption: 'shipping queue · this week',
-    grid: {
-      columns: ['Project', 'Owner', 'Status', 'ETA'],
-      rows: [
-        ['Tiled v2', '@yohan', { label: 'In review', tone: 'warn' }, 'Fri'],
-        ['Pro charts', '@asha', { label: 'Shipped', tone: 'good' }, '—'],
-        ['Mobile shell', '@noor', { label: 'In progress', tone: 'info' }, 'Mon'],
-        ['Onboarding', '@mira', { label: 'Blocked', tone: 'bad' }, 'TBD'],
-      ],
-    },
-    tags: ['ops', 'roadmap'],
-    likes: 21, comments: 4, liked: false, saved: true },
-];
 
-const SEED_NOTIFICATIONS = [
-  { id: 'n1', kind: 'like', unread: true, time: '2m',
-    actor: { handle: 'mira.jpg', name: 'Mira Okafor', avatar: 'MO' },
-    body: 'liked your photo', preview: 'fog rolling off the bay this morning…' },
-  { id: 'n2', kind: 'comment', unread: true, time: '8m',
-    actor: { handle: 'noahbeats', name: 'Noah Reyes', avatar: 'NR' },
-    body: 'commented on your tile', preview: '"the second drop is filthy 🎛️"' },
-  { id: 'n3', kind: 'follow', unread: true, time: '24m',
-    actor: { handle: 'tessa.w', name: 'Tessa Whitfield', avatar: 'TW' },
-    body: 'started following you' },
-  { id: 'n4', kind: 'mention', unread: false, time: '1h',
-    actor: { handle: 'rune', name: 'Rune Halvorsen', avatar: 'RH' },
-    body: 'mentioned you', preview: '@you nailed the framing on this one.' },
-  { id: 'n5', kind: 'like', unread: false, time: '2h',
-    actor: { handle: 'devon', name: 'Devon Yu', avatar: 'DY' },
-    body: 'liked your text post' },
-  { id: 'n6', kind: 'save', unread: false, time: '3h',
-    actor: { handle: 'iyla', name: 'Iyla Mendes', avatar: 'IM' },
-    body: 'saved your tile for later' },
-  { id: 'n7', kind: 'live', unread: false, time: '4h',
-    actor: { handle: 'kenji.live', name: 'Kenji Park', avatar: 'KP' },
-    body: 'is live — studio session' },
-  { id: 'n8', kind: 'reply', unread: false, time: '6h',
-    actor: { handle: 'lume', name: 'Lume', avatar: 'LU' },
-    body: 'replied to your comment', preview: '"agreed — the bridge needs more space."' },
-  { id: 'n9', kind: 'like', unread: false, time: '1d',
-    actor: { handle: 'asha.r', name: 'Asha Rajan', avatar: 'AR' },
-    body: 'liked your reply' },
-];
-
-const SEED_COMMENTS = {
-  t1: [
-    { id: 'c1', author: { handle: 'noahbeats', avatar: 'NR' }, time: '8m', body: 'this is unreal. what lens?' },
-    { id: 'c2', author: { handle: 'mira.jpg', avatar: 'MO' }, time: '6m', body: '50mm 1.4. the fog did the work.' },
-    { id: 'c3', author: { handle: 'rune', avatar: 'RH' }, time: '3m', body: 'cinematic.' },
-  ],
-  t2: [{ id: 'c4', author: { handle: 'lume', avatar: 'LU' }, time: '20m', body: 'the second drop is filthy 🎛️' }],
-  t3: [
-    { id: 'c5', author: { handle: 'tessa.w', avatar: 'TW' }, time: '50m', body: 'needed this today.' },
-    { id: 'c6', author: { handle: 'devon', avatar: 'DY' }, time: '40m', body: 'pinning this.' },
-  ],
-  t7: [{ id: 'c7', author: { handle: 'iyla', avatar: 'IM' }, time: '3h', body: 'after-image, no question.' }],
-  t13: [
-    { id: 'c8', author: { handle: 'corner.flag', avatar: 'CF' }, time: '40m', body: 'goosebumps. what an atmosphere.' },
-    { id: 'c9', author: { handle: 'rune', avatar: 'RH' }, time: '20m', body: 'this shot belongs in a museum.' },
-  ],
-};
+// Tile/comment/notification data lives in Supabase. Helpers below shape
+// rows from the tile_feed view, comments, and notifications tables back
+// into the structure the rest of the components expect.
 
 const fmt = (n) => n >= 1000 ? (n/1000).toFixed(1).replace(/\.0$/,'') + 'k' : String(n);
 
-// pool of incoming tiles used by the live-refresh simulator
-const INCOMING_POOL = [
-  { kind: 'photo', mode: 'social',
-    author: { handle: 'rua.frame', name: 'Rua Vasquez', avatar: 'RV' },
-    time: 'now', caption: 'caught the last light off the rooftop',
-    media: { tone: 28, label: 'rooftop dusk' },
-    tags: ['photo'], likes: 4, comments: 0, liked: false, saved: false },
-  { kind: 'text', mode: 'social',
-    author: { handle: 'noor', name: 'Noor Halabi', avatar: 'NH' },
-    time: 'now', body: 'half the trick of writing well is just refusing to send the first draft.',
-    tags: ['notes'], likes: 12, comments: 2, liked: false, saved: false },
-  { kind: 'live', mode: 'social',
-    author: { handle: 'curio.live', name: 'Curio Live', avatar: 'CL' },
-    time: 'now', caption: 'late night studio session — chiming in from Berlin',
-    media: { tone: 200, viewers: 412 },
-    tags: ['live'], likes: 0, comments: 0, liked: false, saved: false },
-  { kind: 'link', mode: 'pro',
-    author: { handle: 'design.weekly', name: 'Design Weekly', avatar: 'DW' },
-    time: 'now', body: 'On the quiet revival of slow interfaces',
-    link: { domain: 'designweekly.co', title: 'The Quiet Revival of Slow Interfaces',
-            excerpt: 'A small movement of designers building software that asks for less of you.' },
-    tags: ['design'], likes: 18, comments: 3, liked: false, saved: false },
-  { kind: 'audio', mode: 'social',
-    author: { handle: 'tova.fm', name: 'Tova FM', avatar: 'TF' },
-    time: 'now', caption: 'fragment 04 — strings & a ticking clock',
-    media: { duration: '2:14', waveform: [0.3,0.5,0.8,0.6,0.9,0.4,0.7,0.5,0.8,0.6,0.4,0.7,0.9,0.5,0.6,0.8,0.4,0.7,0.5,0.6,0.8,0.4,0.6,0.7,0.5,0.3,0.6,0.8,0.5,0.4] },
-    tags: ['music'], likes: 7, comments: 1, liked: false, saved: false },
-  { kind: 'video', mode: 'social',
-    author: { handle: 'kit.lapse', name: 'Kit Aronson', avatar: 'KA' },
-    time: 'now', caption: 'overnight time-lapse, 600 frames',
-    media: { tone: 220, label: 'overnight lapse', duration: '0:42' },
-    tags: ['video'], likes: 21, comments: 4, liked: false, saved: false },
-];
+function relativeTime(iso) {
+  if (!iso) return 'now';
+  const d = new Date(iso);
+  const sec = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
+  if (sec < 60) return 'now';
+  const min = Math.floor(sec / 60);
+  if (min < 60) return min + 'm';
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return hr + 'h';
+  const day = Math.floor(hr / 24);
+  if (day < 7) return day + 'd';
+  const wk = Math.floor(day / 7);
+  if (wk < 5) return wk + 'w';
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function shapeTile(row, likedSet, savedSet, voteMap) {
+  return {
+    id: row.id,
+    kind: row.kind,
+    mode: row.mode,
+    author: {
+      id: row.author_id,
+      handle: row.author_username,
+      name: row.author_name,
+      avatar: row.author_avatar,
+      role: row.author_role,
+    },
+    time: relativeTime(row.created_at),
+    body: row.body || undefined,
+    caption: row.caption || undefined,
+    media: row.media || undefined,
+    link: row.link || undefined,
+    poll: row.poll
+      ? { ...row.poll, voted: (voteMap && voteMap[row.id]) || row.poll.voted || null }
+      : undefined,
+    chart: row.chart || undefined,
+    grid: row.grid || undefined,
+    tags: row.tags || [],
+    likes: row.like_count || 0,
+    comments: row.comment_count || 0,
+    liked: likedSet ? likedSet.has(row.id) : false,
+    saved: savedSet ? savedSet.has(row.id) : false,
+    private: row.is_private,
+    createdAt: row.created_at,
+  };
+}
+
+function shapeComment(row) {
+  return {
+    id: row.id,
+    tile_id: row.tile_id,
+    body: row.body,
+    time: relativeTime(row.created_at),
+    author: row.author
+      ? { handle: row.author.username, avatar: row.author.avatar }
+      : { handle: 'unknown', avatar: '??' },
+    createdAt: row.created_at,
+  };
+}
+
+function shapeNotification(row) {
+  return {
+    id: row.id,
+    kind: row.kind,
+    unread: !row.read_at,
+    time: relativeTime(row.created_at),
+    actor: row.actor
+      ? { handle: row.actor.username, name: row.actor.name, avatar: row.actor.avatar }
+      : { handle: 'system', name: 'Tiled', avatar: 'TI' },
+    body: row.body,
+    preview: row.preview,
+    tile_id: row.tile_id,
+  };
+}
 
 function TiledApp({ tweaks }) {
   const t = tweaks;
@@ -208,24 +95,26 @@ function TiledApp({ tweaks }) {
     ? { id: auth.currentUser.id, handle: auth.currentUser.username, name: auth.currentUser.name, avatar: auth.currentUser.avatar, role: auth.currentUser.role, email: auth.currentUser.email, bio: auth.currentUser.bio, createdAt: auth.currentUser.createdAt }
     : ME_FALLBACK,
   [auth?.currentUser]);
+  const supabase = window.supabaseClient;
   const [mode, setMode] = useState('social');
   const [view, setView] = useState('feed');             // feed | liked | saved (only used in profile)
   const [onProfile, setOnProfile] = useState(false);    // is profile page active?
-  const [tiles, setTiles] = useState(SEED_TILES);
+  const [tiles, setTiles] = useState([]);
+  const [feedLoading, setFeedLoading] = useState(true);
   const [pendingDismiss, setPendingDismiss] = useState({}); // { [tileId]: expiresAt }
   const dismissTimers = useRef({});
   const [pendingNew, setPendingNew] = useState([]);     // tiles waiting to be revealed
   const [pullProgress, setPullProgress] = useState(0);  // 0..1 — pull-to-refresh visual
   const [refreshing, setRefreshing] = useState(false);
   const mainRef = useRef(null);
-  const [comments, setComments] = useState(SEED_COMMENTS);
+  const [comments, setComments] = useState({});
   const [expanded, setExpanded] = useState(null);
   const [expandOrigin, setExpandOrigin] = useState(null);
   const [commentRail, setCommentRail] = useState(null);
   const [composing, setComposing] = useState(false);
   const [filter, setFilter] = useState('all');
   const [tagFilter, setTagFilter] = useState(null);     // string | null
-  const [notifications, setNotifications] = useState(SEED_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState([]);
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifOrigin, setNotifOrigin] = useState(null);
   const [adminOpen, setAdminOpen] = useState(false);
@@ -236,6 +125,62 @@ function TiledApp({ tweaks }) {
     ice: 'oklch(0.85 0.08 220)',
     ember: 'oklch(0.72 0.16 32)',
   }[t.accent] || 'oklch(0.82 0.13 78)'), [t.accent]);
+
+  // ────────────────────────────────────────────────────────────────────
+  // Initial data load. Fetches everything the feed needs in parallel,
+  // then maps rows into the shape the rest of the components expect.
+  // ────────────────────────────────────────────────────────────────────
+  const loadFeed = async () => {
+    if (!supabase || !ME?.id) return;
+    setFeedLoading(true);
+    const [feedRes, commentsRes, likesRes, savesRes, dismRes, votesRes, notifRes] = await Promise.all([
+      supabase.from('tile_feed').select('*').order('created_at', { ascending: false }),
+      supabase.from('comments').select('*, author:profiles!comments_author_id_fkey(username,avatar)').order('created_at', { ascending: true }),
+      supabase.from('likes').select('tile_id').eq('user_id', ME.id),
+      supabase.from('saves').select('tile_id').eq('user_id', ME.id),
+      supabase.from('dismissals').select('tile_id').eq('user_id', ME.id),
+      supabase.from('poll_votes').select('tile_id, option_id').eq('user_id', ME.id),
+      supabase.from('notifications')
+        .select('*, actor:profiles!notifications_actor_id_fkey(username,name,avatar)')
+        .eq('recipient_id', ME.id)
+        .order('created_at', { ascending: false })
+        .limit(50),
+    ]);
+
+    if (feedRes.error)     console.warn('[tiled] feed load failed:',     feedRes.error.message);
+    if (commentsRes.error) console.warn('[tiled] comments load failed:', commentsRes.error.message);
+    if (likesRes.error)    console.warn('[tiled] likes load failed:',    likesRes.error.message);
+    if (savesRes.error)    console.warn('[tiled] saves load failed:',    savesRes.error.message);
+    if (dismRes.error)     console.warn('[tiled] dismissals load failed:', dismRes.error.message);
+    if (votesRes.error)    console.warn('[tiled] poll_votes load failed:', votesRes.error.message);
+    if (notifRes.error)    console.warn('[tiled] notifications load failed:', notifRes.error.message);
+
+    const likedSet = new Set((likesRes.data || []).map(r => r.tile_id));
+    const savedSet = new Set((savesRes.data || []).map(r => r.tile_id));
+    const dismissedSet = new Set((dismRes.data || []).map(r => r.tile_id));
+    const voteMap = Object.fromEntries((votesRes.data || []).map(r => [r.tile_id, r.option_id]));
+
+    const rawTiles = (feedRes.data || [])
+      .filter(row => !dismissedSet.has(row.id))
+      .map(row => shapeTile(row, likedSet, savedSet, voteMap));
+    setTiles(rawTiles);
+
+    const grouped = {};
+    (commentsRes.data || []).forEach(row => {
+      const c = shapeComment(row);
+      (grouped[c.tile_id] = grouped[c.tile_id] || []).push(c);
+    });
+    setComments(grouped);
+
+    setNotifications((notifRes.data || []).map(shapeNotification));
+    setFeedLoading(false);
+  };
+
+  useEffect(() => {
+    if (!ME?.id) return;
+    loadFeed();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ME?.id]);
 
   // collect all tags currently in use, with counts
   const allTags = useMemo(() => {
@@ -279,8 +224,8 @@ function TiledApp({ tweaks }) {
     if (pendingDismiss[id]) return;
     const expiresAt = Date.now() + 5000;
     setPendingDismiss(prev => ({ ...prev, [id]: expiresAt }));
-    // schedule the actual removal
-    dismissTimers.current[id] = setTimeout(() => {
+    // schedule the actual removal — only on commit do we write a dismissals row
+    dismissTimers.current[id] = setTimeout(async () => {
       setTiles(prev => prev.filter(x => x.id !== id));
       setPendingDismiss(prev => {
         const next = { ...prev };
@@ -288,6 +233,12 @@ function TiledApp({ tweaks }) {
         return next;
       });
       delete dismissTimers.current[id];
+      if (supabase && ME?.id) {
+        const { error } = await supabase.from('dismissals').insert({ tile_id: id, user_id: ME.id });
+        if (error && !String(error.message).toLowerCase().includes('duplicate')) {
+          console.warn('[tiled] dismiss persist failed:', error.message);
+        }
+      }
     }, 5000);
   };
 
@@ -315,36 +266,17 @@ function TiledApp({ tweaks }) {
     setPendingDismiss({});
   };
 
-  // ---- live-refresh simulator: queues a fresh tile every 18s ----
-  useEffect(() => {
-    if (onProfile) return; // pause on profile
-    let i = 0;
-    const id = setInterval(() => {
-      if (document.hidden) return;
-      const template = INCOMING_POOL[i % INCOMING_POOL.length];
-      i += 1;
-      const newTile = { ...template, id: 'inc' + Date.now() + '_' + i };
-      setPendingNew(prev => prev.length >= 8 ? prev : [newTile, ...prev]);
-    }, 18000);
-    return () => clearInterval(id);
-  }, [onProfile]);
-
-  const revealPending = () => {
-    if (pendingNew.length === 0) return;
+  // Pull-to-refresh and the new-tiles chip both call revealPending.
+  // Realtime push (the source that populates pendingNew) comes in the
+  // next migration step; for now this just refetches the feed from the
+  // server so the user sees anyone else's posts since they last loaded.
+  const revealPending = async () => {
     setRefreshing(true);
-    // scroll the main column to top so the new tiles are visible
     if (mainRef.current) mainRef.current.scrollTo({ top: 0, behavior: 'smooth' });
-    // small delay so the refresh ring spins before tiles drop in
-    setTimeout(() => {
-      setTiles(prev => [...pendingNew.map(p => ({ ...p, isNew: true })), ...prev]);
-      setPendingNew([]);
-      setPullProgress(0);
-      setRefreshing(false);
-      // strip the isNew flag after the highlight animation
-      setTimeout(() => {
-        setTiles(prev => prev.map(x => x.isNew ? { ...x, isNew: false } : x));
-      }, 1600);
-    }, 450);
+    await loadFeed();
+    setPendingNew([]);
+    setPullProgress(0);
+    setRefreshing(false);
   };
 
   // ---- pull-to-refresh: wheel + touch on the main column when scrollTop===0 ----
@@ -364,7 +296,7 @@ function TiledApp({ tweaks }) {
     };
 
     const release = () => {
-      if (pull >= THRESHOLD && pendingNew.length > 0) {
+      if (pull >= THRESHOLD) {
         revealPending();
       } else {
         setPullProgress(0);
@@ -377,7 +309,7 @@ function TiledApp({ tweaks }) {
       if (refreshing) return;
       // only react when at the very top AND user is scrolling up (deltaY < 0)
       if (el.scrollTop > 0) { pull = 0; setPullProgress(0); return; }
-      if (e.deltaY < 0 && pendingNew.length > 0) {
+      if (e.deltaY < 0) {
         e.preventDefault();
         updatePull(-e.deltaY);
         clearTimeout(onWheel._t);
@@ -393,7 +325,7 @@ function TiledApp({ tweaks }) {
     const onTouchMove = (e) => {
       if (touchStartY == null || refreshing) return;
       const dy = e.touches[0].clientY - touchStartY;
-      if (dy > 0 && el.scrollTop === 0 && pendingNew.length > 0) {
+      if (dy > 0 && el.scrollTop === 0) {
         e.preventDefault();
         pull = dy;
         setPullProgress(Math.min(1, pull / THRESHOLD));
@@ -414,54 +346,134 @@ function TiledApp({ tweaks }) {
     };
   }, [pendingNew.length, refreshing]);
 
-  const handleLike = (id) => {
+  // ─── Like — optimistic toggle, mirror to likes table
+  const handleLike = async (id) => {
+    if (!supabase || !ME?.id) return;
+    const tile = tiles.find(x => x.id === id);
+    if (!tile) return;
+    const wasLiked = tile.liked;
+    // optimistic update
     setTiles(prev => prev.map(x =>
       x.id === id ? { ...x, liked: !x.liked, likes: x.likes + (x.liked ? -1 : 1) } : x
     ));
+    const op = wasLiked
+      ? supabase.from('likes').delete().match({ tile_id: id, user_id: ME.id })
+      : supabase.from('likes').insert({ tile_id: id, user_id: ME.id });
+    const { error } = await op;
+    if (error) {
+      console.warn('[tiled] like failed:', error.message);
+      // revert
+      setTiles(prev => prev.map(x => x.id === id ? tile : x));
+    }
   };
 
-  const handleSave = (id) => {
+  // ─── Save — same shape as like
+  const handleSave = async (id) => {
+    if (!supabase || !ME?.id) return;
+    const tile = tiles.find(x => x.id === id);
+    if (!tile) return;
+    const wasSaved = tile.saved;
     setTiles(prev => prev.map(x => x.id === id ? { ...x, saved: !x.saved } : x));
+    const op = wasSaved
+      ? supabase.from('saves').delete().match({ tile_id: id, user_id: ME.id })
+      : supabase.from('saves').insert({ tile_id: id, user_id: ME.id });
+    const { error } = await op;
+    if (error) {
+      console.warn('[tiled] save failed:', error.message);
+      setTiles(prev => prev.map(x => x.id === id ? tile : x));
+    }
   };
 
-  const handleAddComment = (tileId, body) => {
-    if (!body.trim()) return;
-    const c = { id: 'c' + Date.now(), author: { handle: ME.handle, avatar: ME.avatar }, time: 'now', body: body.trim() };
-    setComments(prev => ({ ...prev, [tileId]: [...(prev[tileId] || []), c] }));
+  const handleAddComment = async (tileId, body) => {
+    const trimmed = body.trim();
+    if (!trimmed || !supabase || !ME?.id) return;
+    // optimistic placeholder
+    const tempId = 'tmp_' + Date.now();
+    const optimistic = {
+      id: tempId, tile_id: tileId, body: trimmed, time: 'now',
+      author: { handle: ME.handle, avatar: ME.avatar },
+    };
+    setComments(prev => ({ ...prev, [tileId]: [...(prev[tileId] || []), optimistic] }));
     setTiles(prev => prev.map(x => x.id === tileId ? { ...x, comments: x.comments + 1 } : x));
-  };
 
-  const handleVote = (tileId, optId) => {
-    setTiles(prev => prev.map(x => {
-      if (x.id !== tileId || !x.poll || x.poll.voted) return x;
-      return { ...x, poll: { ...x.poll, voted: optId,
-        options: x.poll.options.map(o => o.id === optId ? { ...o, votes: o.votes + 1 } : o) } };
+    const { data, error } = await supabase
+      .from('comments')
+      .insert({ tile_id: tileId, author_id: ME.id, body: trimmed })
+      .select('*, author:profiles!comments_author_id_fkey(username,avatar)')
+      .single();
+    if (error) {
+      console.warn('[tiled] comment failed:', error.message);
+      setComments(prev => ({ ...prev, [tileId]: (prev[tileId] || []).filter(c => c.id !== tempId) }));
+      setTiles(prev => prev.map(x => x.id === tileId ? { ...x, comments: Math.max(0, x.comments - 1) } : x));
+      return;
+    }
+    // replace temp with real
+    const real = shapeComment(data);
+    setComments(prev => ({
+      ...prev,
+      [tileId]: (prev[tileId] || []).map(c => c.id === tempId ? real : c),
     }));
   };
 
-  const handleOpenNotifications = (rect) => {
+  const handleVote = async (tileId, optId) => {
+    if (!supabase || !ME?.id) return;
+    const tile = tiles.find(x => x.id === tileId);
+    if (!tile?.poll || tile.poll.voted) return;
+    // optimistic update
+    setTiles(prev => prev.map(x => x.id === tileId ? {
+      ...x, poll: {
+        ...x.poll, voted: optId,
+        options: x.poll.options.map(o => o.id === optId ? { ...o, votes: (o.votes || 0) + 1 } : o),
+      },
+    } : x));
+    const { error } = await supabase.rpc('cast_poll_vote', { p_tile_id: tileId, p_option_id: optId });
+    if (error) {
+      console.warn('[tiled] vote failed:', error.message);
+      setTiles(prev => prev.map(x => x.id === tileId ? tile : x));
+    }
+  };
+
+  const handleOpenNotifications = async (rect) => {
     setNotifOrigin(rect || null);
     setNotifOpen(true);
-    // mark all as read on open
+    const unreadIds = notifications.filter(n => n.unread).map(n => n.id);
+    if (!unreadIds.length || !supabase) return;
     setNotifications(prev => prev.map(n => n.unread ? { ...n, unread: false } : n));
+    const { error } = await supabase
+      .from('notifications')
+      .update({ read_at: new Date().toISOString() })
+      .in('id', unreadIds);
+    if (error) console.warn('[tiled] mark-read failed:', error.message);
   };
-  const handleDismissNotification = (id) => {
+  const handleDismissNotification = async (id) => {
+    if (!supabase) return;
     setNotifications(prev => prev.filter(n => n.id !== id));
+    const { error } = await supabase.from('notifications').delete().eq('id', id);
+    if (error) console.warn('[tiled] dismiss notification failed:', error.message);
   };
-  const handleClearNotifications = () => setNotifications([]);
+  const handleClearNotifications = async () => {
+    if (!supabase || !ME?.id) return;
+    setNotifications([]);
+    const { error } = await supabase.from('notifications').delete().eq('recipient_id', ME.id);
+    if (error) console.warn('[tiled] clear notifications failed:', error.message);
+  };
 
-  const handlePost = (kind, body, postTags) => {
+  const handlePost = async (kind, body, postTags) => {
+    if (!supabase || !ME?.id) return;
     const isStructured = kind === 'chart' || kind === 'grid';
-    const newTile = {
-      id: 'new' + Date.now(),
-      kind, mode, author: ME, time: 'now',
-      body: kind === 'text' ? body : undefined,
-      caption: (kind !== 'text' && !isStructured) ? body : undefined,
+    const trimmed = (body || '').trim();
+    const tilePayload = {
+      author_id: ME.id,
+      kind,
+      mode,
+      is_private: mode === 'private',
+      body: kind === 'text' ? trimmed : null,
+      caption: (kind !== 'text' && !isStructured) ? trimmed : null,
       media: kind === 'photo' ? { tone: 180, label: 'new photo' }
-            : kind === 'video' ? { tone: 280, label: 'new video', duration: '0:18' }
-            : undefined,
+           : kind === 'video' ? { tone: 280, label: 'new video', duration: '0:18' }
+           : null,
       chart: kind === 'chart' ? {
-        label: body.trim() || 'Untitled chart',
+        label: trimmed || 'Untitled chart',
         unit: '',
         data: [
           { label: 'Mon', value: 32 }, { label: 'Tue', value: 48 },
@@ -469,21 +481,33 @@ function TiledApp({ tweaks }) {
           { label: 'Fri', value: 64 }, { label: 'Sat', value: 38 },
           { label: 'Sun', value: 29 },
         ],
-      } : undefined,
+      } : null,
       grid: kind === 'grid' ? {
         columns: ['Item', 'Owner', 'Status'],
         rows: [
-          ['Item one', '@you', { label: 'In progress', tone: 'info' }],
-          ['Item two', '@you', { label: 'Shipped', tone: 'good' }],
-          ['Item three', '@you', { label: 'Blocked', tone: 'bad' }],
+          ['Item one', '@' + ME.handle, { label: 'In progress', tone: 'info' }],
+          ['Item two', '@' + ME.handle, { label: 'Shipped', tone: 'good' }],
+          ['Item three', '@' + ME.handle, { label: 'Blocked', tone: 'bad' }],
         ],
-      } : undefined,
-      tags: postTags || [],
-      likes: 0, comments: 0, liked: false, saved: false,
-      isNew: true,
+      } : null,
     };
-    setTiles(prev => [newTile, ...prev]);
     setComposing(false);
+    const { data, error } = await supabase
+      .from('tiles').insert(tilePayload).select('id').single();
+    if (error) {
+      console.warn('[tiled] post failed:', error.message);
+      return;
+    }
+    // tags as a separate write
+    const tags = (postTags || []).slice(0, 5);
+    if (tags.length) {
+      const tagRows = tags.map(tag => ({ tile_id: data.id, tag }));
+      const { error: tagErr } = await supabase.from('tile_tags').insert(tagRows);
+      if (tagErr) console.warn('[tiled] tag insert failed:', tagErr.message);
+    }
+    // refetch the feed so the new tile appears with correct counts/relations
+    await loadFeed();
+    if (mainRef.current) mainRef.current.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const expandedTile = expanded ? tiles.find(x => x.id === expanded) : null;
@@ -529,26 +553,35 @@ function TiledApp({ tweaks }) {
         )}
 
         <div className="ti-grid" data-density={t.density}>
-          {visibleTiles.map(tile => (
-            pendingDismiss[tile.id] ? (
-              <UndoSlot key={tile.id} tile={tile}
-                        expiresAt={pendingDismiss[tile.id]}
-                        onUndo={() => handleUndo(tile.id)} />
-            ) : (
-            <Tile key={tile.id} tile={tile}
-                  comments={comments[tile.id] || []}
-                  dismissing={false}
-                  onDismiss={() => handleDismiss(tile.id)}
-                  onLike={() => handleLike(tile.id)}
-                  onSave={() => handleSave(tile.id)}
-                  onExpand={(rect) => { setExpandOrigin(rect); setExpanded(tile.id); }}
-                  onOpenComments={() => setCommentRail(tile.id)}
-                  onVote={(optId) => handleVote(tile.id, optId)}
-                  onTag={setTagFilter}
-                  t={t} />
-            )
-          ))}
-          {visibleTiles.length === 0 && <EmptyState view={view} tagFilter={tagFilter} />}
+          {feedLoading ? (
+            <FeedSkeleton density={t.density} />
+          ) : (
+            <>
+              {visibleTiles.map(tile => (
+                pendingDismiss[tile.id] ? (
+                  <UndoSlot key={tile.id} tile={tile}
+                            expiresAt={pendingDismiss[tile.id]}
+                            onUndo={() => handleUndo(tile.id)} />
+                ) : (
+                <Tile key={tile.id} tile={tile}
+                      comments={comments[tile.id] || []}
+                      dismissing={false}
+                      onDismiss={() => handleDismiss(tile.id)}
+                      onLike={() => handleLike(tile.id)}
+                      onSave={() => handleSave(tile.id)}
+                      onExpand={(rect) => { setExpandOrigin(rect); setExpanded(tile.id); }}
+                      onOpenComments={() => setCommentRail(tile.id)}
+                      onVote={(optId) => handleVote(tile.id, optId)}
+                      onTag={setTagFilter}
+                      t={t} />
+                )
+              ))}
+              {visibleTiles.length === 0 && (
+                <EmptyState view={view} tagFilter={tagFilter} mode={mode}
+                            onCompose={() => setComposing(true)} />
+              )}
+            </>
+          )}
         </div>
       </main>
 
@@ -594,16 +627,46 @@ function TiledApp({ tweaks }) {
   );
 }
 
-function EmptyState({ view, tagFilter }) {
-  let msg = 'Nothing here yet.';
-  if (view === 'liked') msg = 'No liked tiles yet. Tap the heart on a tile to add it here.';
-  else if (view === 'saved') msg = 'No saved tiles yet. Tap the bookmark to keep something for later.';
-  else if (tagFilter) msg = `No tiles tagged with #${tagFilter}.`;
+function EmptyState({ view, tagFilter, mode, onCompose }) {
+  let msg = 'Welcome to Tiled. Post your first tile to get started.';
+  let cta = 'Post a tile';
+  let showCta = true;
+  if (view === 'liked') {
+    msg = 'No liked tiles yet. Tap the heart on a tile to add it here.';
+    showCta = false;
+  } else if (view === 'saved') {
+    msg = 'No saved tiles yet. Tap the bookmark to keep something for later.';
+    showCta = false;
+  } else if (tagFilter) {
+    msg = `No tiles tagged with #${tagFilter}.`;
+    showCta = false;
+  } else if (mode === 'pro') {
+    msg = 'No professional tiles yet. Post one to get the section going.';
+  } else if (mode === 'private') {
+    msg = 'Private notes are only visible to you. Write your first one.';
+  }
   return (
     <div className="ti-empty">
       <div className="ti-empty-mark"><span /><span /><span /><span /></div>
       <div className="ti-empty-msg">{msg}</div>
+      {showCta && onCompose && (
+        <button className="ti-empty-cta" onClick={onCompose}>{cta}</button>
+      )}
     </div>
+  );
+}
+
+function FeedSkeleton({ density }) {
+  const count = density === 'compact' ? 8 : density === 'regular' ? 6 : 4;
+  return (
+    <>
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="ti-skel">
+          <div className="ti-gloss" />
+          <div className="ti-skel-shimmer" />
+        </div>
+      ))}
+    </>
   );
 }
 

@@ -61,5 +61,9 @@ exists` before each `create policy`, etc. — so you can re-run it after edits.
 - `0003_fix_role_guard.sql` — fix the role-guard trigger so that a Postgres
   superuser running in the SQL Editor can bootstrap the first Owner. Within
   the API the rule still holds: only an Owner can change roles.
+- `0004_data_layer.sql` — `tile_feed` view (joined query for the feed),
+  `cast_poll_vote` RPC (lets non-authors vote), notification triggers
+  (auto-insert on like/save/comment), and adds `tiles` + `notifications`
+  to the realtime publication for the next migration step.
 
 Run them in order. All migrations are idempotent.

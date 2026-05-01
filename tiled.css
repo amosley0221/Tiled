@@ -2862,6 +2862,48 @@ button { font-family: inherit; }
 }
 .ti-auth-info b { color: var(--accent); }
 
+/* feed loading skeleton tiles + empty-state CTA */
+.ti-skel {
+  position: relative;
+  aspect-ratio: 1;
+  background: linear-gradient(180deg, #0c0c0e 0%, #050506 100%);
+  border: 0.5px solid rgba(255,255,255,0.05);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.ti-skel-shimmer {
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(255,255,255,0.03) 45%,
+    rgba(255,255,255,0.07) 50%,
+    rgba(255,255,255,0.03) 55%,
+    transparent 100%);
+  animation: skelShimmer 1.6s linear infinite;
+}
+@keyframes skelShimmer {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
+}
+
+.ti-empty-cta {
+  margin-top: 14px;
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #f8f8f8 0%, #c8c8c8 100%);
+  color: #000;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.6),
+    0 4px 14px rgba(0,0,0,0.5);
+  transition: transform .12s ease;
+}
+.ti-empty-cta:hover { transform: translateY(-1px); }
+
 /* ───── staff (admin/owner) shield button in top bar ───── */
 .ti-staff {
   position: relative;
