@@ -437,45 +437,22 @@ button { font-family: inherit; }
 @media (max-width: 600px) {
   .ti-grid, .ti-grid[data-density="compact"] { grid-template-columns: 1fr; }
 
-  /* Make .ti-main the actual scroll container on phones. The default
-     architecture has html/body as the scroller with .ti-top sticky,
-     which Chrome on iOS doesn't honor for scroll-snap. Switching to a
-     flex column with .ti-main as the only scroller fixes that. */
-  html, body {
-    height: 100%;
-    overflow: hidden;
-    overscroll-behavior: none;
-  }
-  .ti-root {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-  }
-  .ti-top {
-    position: static;       /* container holds it now */
-    flex-shrink: 0;
-  }
-  .ti-main {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    padding: 16px 12px 24px;
+  /* Keep the document/html as the scroller (default architecture).
+     Snap goes on html, with scroll-padding-top reserving the sticky
+     topbar height so the snapped tile lands just below it.
+     Tiles drop their square aspect ratio and fill the visible area
+     so each one is a meaningful snap point. */
+  html {
     scroll-snap-type: y mandatory;
-    scroll-padding-top: 8px;
-    overscroll-behavior: contain;
+    scroll-padding-top: 64px;
   }
-
-  /* One tile per screen — fill the viewport height minus the topbar. */
   .ti-grid > .ti-tile,
   .ti-grid > .ti-undo-slot {
     aspect-ratio: auto;
-    min-height: calc(100dvh - 88px);
+    min-height: calc(100svh - 96px);
     scroll-snap-align: start;
     scroll-snap-stop: always;
   }
-  /* Feed/profile header gets its own snap point so the page can land
-     on it cleanly when scrolled to the very top. */
   .ti-feed-hd, .ti-profile {
     scroll-snap-align: start;
   }
