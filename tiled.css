@@ -2949,6 +2949,23 @@ button {
   cursor: default;
   pointer-events: auto;
 }
+/* Portal-rendered menu — lives in document.body so it's free of the
+   tile's transformed stacking context, swipe handlers, and any other
+   parent quirks. position:fixed is now correctly viewport-relative. */
+.ti-tile-menu-portal {
+  position: fixed; inset: 0;
+  z-index: 200;
+  pointer-events: none;
+}
+.ti-tile-menu-portal .ti-tile-menu-veil {
+  pointer-events: auto;
+  z-index: 1;
+}
+.ti-tile-menu-portal .ti-tile-menu {
+  position: fixed !important;
+  pointer-events: auto;
+  z-index: 2;
+}
 .ti-tile-menu {
   position: absolute;
   top: calc(100% + 6px);

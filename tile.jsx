@@ -5,11 +5,21 @@ const { useState: useState_t, useRef: useRef_t, useEffect: useEffect_t } = React
 function Tile({ tile, comments, dismissing, me, onDismiss, onLike, onSave, onDelete, onExpand, onOpenComments, onVote, onTag, t }) {
   const [drag, setDrag] = useState_t({ x: 0, dragging: false });
   const [menuOpen, setMenuOpen] = useState_t(false);
+  const [menuRect, setMenuRect] = useState_t(null);
   const startRef = useRef_t(0);
   const tileRef = useRef_t(null);
+  const moreRef = useRef_t(null);
   const isAuthor = me && tile.author && me.handle === tile.author.handle;
   const isStaff = me && (me.role === 'admin' || me.role === 'owner');
   const canDelete = isAuthor || isStaff;
+
+  const openMenu = () => {
+    const r = moreRef.current?.getBoundingClientRect();
+    if (r) setMenuRect({ top: r.bottom + 6, right: window.innerWidth - r.right });
+    setMenuOpen(true);
+  };
+  const closeMenu = () => setMenuOpen(false);
+  const commitDelete = () => { closeMenu(); onDelete && onDelete(); };
 
   const handleExpand = () => {
     const rect = tileRef.current?.getBoundingClientRect();
@@ -73,38 +83,39 @@ function Tile({ tile, comments, dismissing, me, onDismiss, onLike, onSave, onDel
           </div>
         </div>
         <div className="ti-tile-more-wrap ti-no-drag">
-          <button className="ti-tile-btn ti-tile-more" aria-label="more"
-                  onPointerUp={(e) => { e.stopPropagation(); setMenuOpen(o => !o); }}
+          <button ref={moreRef}
+                  className="ti-tile-btn ti-tile-more" aria-label="more"
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    if (menuOpen) closeMenu(); else openMenu();
+                  }}
                   onClick={(e) => e.stopPropagation()}>
             <span /><span /><span />
           </button>
-          {menuOpen && (
-            <>
-              <div className="ti-tile-menu-veil"
-                   onPointerUp={(e) => { e.stopPropagation(); setMenuOpen(false); }}
-                   onClick={(e) => e.stopPropagation()} />
-              <div className="ti-tile-menu" onClick={(e) => e.stopPropagation()}>
-                {canDelete ? (
-                  <button type="button" className="ti-tile-menu-item ti-tile-menu-danger"
-                          onPointerUp={(e) => {
-                            e.stopPropagation();
-                            setMenuOpen(false);
-                            onDelete && onDelete();
-                          }}
-                          onClick={(e) => e.stopPropagation()}>
-                    <svg className="ti-tile-menu-icn" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6">
-                      <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>
-                    </svg>
-                    <span>{isAuthor ? 'Delete tile' : 'Remove (moderate)'}</span>
-                  </button>
-                ) : (
-                  <div className="ti-tile-menu-empty">No actions</div>
-                )}
-              </div>
-            </>
-          )}
         </div>
       </header>
+
+      {menuOpen && menuRect && window.ReactDOM && window.ReactDOM.createPortal(
+        <div className="ti-tile-menu-portal">
+          <div className="ti-tile-menu-veil"
+               onPointerDown={() => closeMenu()} />
+          <div className="ti-tile-menu"
+               style={{ top: menuRect.top, right: menuRect.right }}>
+            {canDelete ? (
+              <button type="button" className="ti-tile-menu-item ti-tile-menu-danger"
+                      onPointerDown={(e) => { e.stopPropagation(); commitDelete(); }}>
+                <svg className="ti-tile-menu-icn" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6">
+                  <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>
+                </svg>
+                <span>{isAuthor ? 'Delete tile' : 'Remove (moderate)'}</span>
+              </button>
+            ) : (
+              <div className="ti-tile-menu-empty">No actions</div>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
 
       <TileBody tile={tile} onVote={onVote} />
 

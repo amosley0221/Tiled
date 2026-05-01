@@ -101,8 +101,7 @@ function ExpandedTile({ tile, comments, onClose, onLike, onSave, onDelete, onCom
             <div className="ti-expanded-hd-actions">
               {canDelete && (
                 <button className="ti-expanded-delete"
-                        onPointerUp={(e) => { e.stopPropagation(); onClose(); onDelete && onDelete(); }}
-                        onClick={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => { e.stopPropagation(); onClose(); onDelete && onDelete(); }}
                         aria-label={isAuthor ? 'Delete tile' : 'Remove tile'}>
                   <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6">
                     <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>
