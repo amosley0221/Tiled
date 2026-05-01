@@ -58,5 +58,8 @@ exists` before each `create policy`, etc. — so you can re-run it after edits.
 - `0002_admin.sql` — `is_admin()` / `is_owner()` helpers, role-change trigger
   guard, RLS letting Owner update any profile, RLS letting Admin/Owner delete
   any tile or comment
+- `0003_fix_role_guard.sql` — fix the role-guard trigger so that a Postgres
+  superuser running in the SQL Editor can bootstrap the first Owner. Within
+  the API the rule still holds: only an Owner can change roles.
 
-Run them in order. Both are idempotent.
+Run them in order. All migrations are idempotent.
