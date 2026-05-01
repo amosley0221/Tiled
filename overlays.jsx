@@ -256,6 +256,97 @@ function Comment({ c }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Mobile comment sheet — full-screen view with the tile shown up top,
+// comments scrolling below, and a sticky input at the bottom. Used in
+// place of CommentRail on phone-sized viewports.
+// ─────────────────────────────────────────────────────────────────────────
+function MobileCommentSheet({ tile, comments, onClose, onComment, me }) {
+  const [draft, setDraft] = useState_o('');
+  useEffect_o(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const submit = (e) => {
+    e?.preventDefault();
+    if (!draft.trim()) return;
+    onComment(draft);
+    setDraft('');
+  };
+
+  if (!tile) return null;
+  return (
+    <div className="ti-mc-sheet">
+      <header className="ti-mc-topbar">
+        <button className="ti-mc-back" onClick={onClose} aria-label="back">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7">
+            <path d="m15 6-6 6 6 6"/>
+          </svg>
+        </button>
+        <div className="ti-mc-title">
+          <span className="ti-mc-title-main">Comments</span>
+          <span className="ti-mc-title-sub">{comments.length} on @{tile.author.handle}'s tile</span>
+        </div>
+        <span className="ti-mc-spacer" />
+      </header>
+
+      <div className="ti-mc-scroll">
+        <article className="ti-mc-tile">
+          <div className="ti-gloss" />
+          <div className="ti-gloss-edge" />
+          <header className="ti-tile-hd">
+            <div className="ti-author">
+              <div className="ti-avatar">
+                {tile.author.avatar_url
+                  ? <img src={tile.author.avatar_url} alt={tile.author.avatar} />
+                  : tile.author.avatar}
+              </div>
+              <div className="ti-author-meta">
+                <div className="ti-author-name">{tile.author.name}</div>
+                <div className="ti-author-handle">@{tile.author.handle} · {tile.time}</div>
+              </div>
+            </div>
+          </header>
+          <ExpandedBody tile={tile} onVote={() => {}} />
+        </article>
+
+        <div className="ti-mc-divider">
+          <span>{comments.length} comment{comments.length === 1 ? '' : 's'}</span>
+        </div>
+
+        <div className="ti-mc-list">
+          {comments.length === 0 ? (
+            <div className="ti-mc-empty">
+              <div className="ti-mc-empty-mark"><span /><span /><span /><span /></div>
+              <div className="ti-mc-empty-msg">No comments yet.</div>
+              <div className="ti-mc-empty-sub">Be the first to share your thoughts.</div>
+            </div>
+          ) : (
+            comments.map(c => <Comment key={c.id} c={c} />)
+          )}
+        </div>
+      </div>
+
+      <form className="ti-mc-input" onSubmit={submit}>
+        <div className="ti-avatar ti-avatar-sm">
+          {me?.avatar_url
+            ? <img src={me.avatar_url} alt={me?.avatar || 'you'} />
+            : (me?.avatar || 'YO')}
+        </div>
+        <input value={draft} onChange={(e) => setDraft(e.target.value)}
+               placeholder="Add a comment…" autoFocus />
+        <button type="submit" disabled={!draft.trim()} aria-label="Post comment">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M5 12h14M13 6l6 6-6 6"/>
+          </svg>
+        </button>
+      </form>
+    </div>
+  );
+}
+
 function CommentRail({ tile, comments, onClose, onComment, me }) {
   const [draft, setDraft] = useState_o('');
   useEffect_o(() => {
@@ -1157,3 +1248,4 @@ window.NotificationsPanel = NotificationsPanel;
 window.AdminPanel = AdminPanel;
 window.EditProfileModal = EditProfileModal;
 window.FollowListModal = FollowListModal;
+window.MobileCommentSheet = MobileCommentSheet;

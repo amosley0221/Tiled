@@ -129,6 +129,21 @@ function TiledApp({ tweaks }) {
   const [viewingProfileId, setViewingProfileId] = useState(null); // null = my profile (or off-profile)
   const [viewedProfile, setViewedProfile] = useState(null);       // profile_stats row when viewing another user
   const [viewedProfileLoading, setViewedProfileLoading] = useState(false);
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia
+      ? window.matchMedia('(max-width: 600px)').matches
+      : false);
+
+  // Track mobile viewport so we can swap CommentRail for MobileCommentSheet
+  useEffect(() => {
+    if (!window.matchMedia) return;
+    const mq = window.matchMedia('(max-width: 600px)');
+    const onChange = (e) => setIsMobile(e.matches);
+    mq.addEventListener ? mq.addEventListener('change', onChange) : mq.addListener(onChange);
+    return () => {
+      mq.removeEventListener ? mq.removeEventListener('change', onChange) : mq.removeListener(onChange);
+    };
+  }, []);
 
   const accentCSS = useMemo(() => ({
     gold: 'oklch(0.82 0.13 78)',
@@ -932,11 +947,19 @@ function TiledApp({ tweaks }) {
       )}
 
       {commentRail && !expandedTile && (
-        <CommentRail tile={tiles.find(x => x.id === commentRail)}
-                     comments={comments[commentRail] || []}
-                     me={ME}
-                     onClose={() => setCommentRail(null)}
-                     onComment={(body) => handleAddComment(commentRail, body)} />
+        isMobile ? (
+          <MobileCommentSheet tile={tiles.find(x => x.id === commentRail)}
+                              comments={comments[commentRail] || []}
+                              me={ME}
+                              onClose={() => setCommentRail(null)}
+                              onComment={(body) => handleAddComment(commentRail, body)} />
+        ) : (
+          <CommentRail tile={tiles.find(x => x.id === commentRail)}
+                       comments={comments[commentRail] || []}
+                       me={ME}
+                       onClose={() => setCommentRail(null)}
+                       onComment={(body) => handleAddComment(commentRail, body)} />
+        )
       )}
 
       {notifOpen && (
