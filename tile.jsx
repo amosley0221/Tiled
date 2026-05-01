@@ -74,18 +74,25 @@ function Tile({ tile, comments, dismissing, me, onDismiss, onLike, onSave, onDel
         </div>
         <div className="ti-tile-more-wrap ti-no-drag">
           <button className="ti-tile-btn ti-tile-more" aria-label="more"
-                  onClick={(e) => { e.stopPropagation(); setMenuOpen(o => !o); }}>
+                  onPointerUp={(e) => { e.stopPropagation(); setMenuOpen(o => !o); }}
+                  onClick={(e) => e.stopPropagation()}>
             <span /><span /><span />
           </button>
           {menuOpen && (
             <>
               <div className="ti-tile-menu-veil"
-                   onClick={(e) => { e.stopPropagation(); setMenuOpen(false); }} />
+                   onPointerUp={(e) => { e.stopPropagation(); setMenuOpen(false); }}
+                   onClick={(e) => e.stopPropagation()} />
               <div className="ti-tile-menu" onClick={(e) => e.stopPropagation()}>
                 {canDelete ? (
                   <button type="button" className="ti-tile-menu-item ti-tile-menu-danger"
-                          onClick={() => { setMenuOpen(false); onDelete && onDelete(); }}>
-                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6">
+                          onPointerUp={(e) => {
+                            e.stopPropagation();
+                            setMenuOpen(false);
+                            onDelete && onDelete();
+                          }}
+                          onClick={(e) => e.stopPropagation()}>
+                    <svg className="ti-tile-menu-icn" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6">
                       <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>
                     </svg>
                     <span>{isAuthor ? 'Delete tile' : 'Remove (moderate)'}</span>

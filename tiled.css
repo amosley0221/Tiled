@@ -2946,6 +2946,8 @@ button {
 .ti-tile-menu-veil {
   position: fixed; inset: 0;
   z-index: 49;
+  cursor: default;
+  pointer-events: auto;
 }
 .ti-tile-menu {
   position: absolute;
@@ -2972,9 +2974,15 @@ button {
   letter-spacing: -0.005em;
   text-align: left;
   border-radius: 7px;
-  cursor: pointer;
+  cursor: pointer !important;          /* override .ti-tile cursor:grab */
   -webkit-tap-highlight-color: rgba(255,255,255,0.05);
+  touch-action: manipulation;
 }
+/* Inner icon + label shouldn't intercept pointer events — every click
+   should land on the button itself, regardless of which child is under
+   the cursor. Without this the SVG/<span> can absorb the pointer event
+   and onClick never fires reliably across browsers. */
+.ti-tile-menu-item > * { pointer-events: none; }
 @media (hover: hover) {
   .ti-tile-menu-item:hover { background: rgba(255,255,255,0.06); }
 }
