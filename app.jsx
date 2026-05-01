@@ -96,6 +96,7 @@ function TiledApp({ tweaks }) {
     : ME_FALLBACK,
   [auth?.currentUser]);
   const supabase = window.supabaseClient;
+  const cacheKey = ME?.id ? 'tiled.feed.cache.v2.' + ME.id : null;
   const [mode, setMode] = useState('social');
   const [view, setView] = useState('feed');             // feed | liked | saved (only used in profile)
   const [onProfile, setOnProfile] = useState(false);    // is profile page active?
@@ -130,9 +131,9 @@ function TiledApp({ tweaks }) {
   // Initial data load. Fetches everything the feed needs in parallel,
   // then maps rows into the shape the rest of the components expect.
   // ────────────────────────────────────────────────────────────────────
-  const loadFeed = async () => {
+  const loadFeed = async ({ silent = false } = {}) => {
     if (!supabase || !ME?.id) return;
-    setFeedLoading(true);
+    if (!silent) setFeedLoading(true);
     const [feedRes, commentsRes, likesRes, savesRes, dismRes, votesRes, notifRes] = await Promise.all([
       supabase.from('tile_feed').select('*').order('created_at', { ascending: false }),
       supabase.from('comments').select('*, author:profiles!comments_author_id_fkey(username,avatar)').order('created_at', { ascending: true }),
@@ -172,13 +173,44 @@ function TiledApp({ tweaks }) {
     });
     setComments(grouped);
 
-    setNotifications((notifRes.data || []).map(shapeNotification));
+    const shapedNotifs = (notifRes.data || []).map(shapeNotification);
+    setNotifications(shapedNotifs);
     setFeedLoading(false);
+
+    // Cache for instant-paint on next reload (stale-while-revalidate).
+    if (cacheKey) {
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify({
+          ts: Date.now(),
+          tiles: rawTiles,
+          comments: grouped,
+          notifications: shapedNotifs,
+        }));
+      } catch (e) { /* quota / private mode — fine to skip */ }
+    }
   };
 
   useEffect(() => {
     if (!ME?.id) return;
-    loadFeed();
+    // Hydrate from cache first so the feed paints instantly on reload,
+    // then refetch in the background to pick up changes.
+    let hadCache = false;
+    if (cacheKey) {
+      try {
+        const raw = localStorage.getItem(cacheKey);
+        if (raw) {
+          const cached = JSON.parse(raw);
+          if (cached?.tiles) {
+            setTiles(cached.tiles);
+            setComments(cached.comments || {});
+            setNotifications(cached.notifications || []);
+            setFeedLoading(false);
+            hadCache = true;
+          }
+        }
+      } catch (e) { /* invalid JSON — fall through to full load */ }
+    }
+    loadFeed({ silent: hadCache });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ME?.id]);
 

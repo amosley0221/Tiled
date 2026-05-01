@@ -196,6 +196,12 @@ function AuthProvider({ children }) {
 
   const logout = async () => {
     if (!supabase) return;
+    // Clear any per-user cached app state so a different sign-in starts clean.
+    try {
+      Object.keys(localStorage).forEach(k => {
+        if (k.startsWith('tiled.feed.cache.')) localStorage.removeItem(k);
+      });
+    } catch (e) { /* ignore */ }
     await supabase.auth.signOut();
     setSession(null); setProfile(null);
   };
