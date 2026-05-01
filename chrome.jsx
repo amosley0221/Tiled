@@ -2,7 +2,7 @@
 
 const { useState: useState_c, useEffect: useEffect_c, useRef: useRef_c } = React;
 
-function TopBar({ mode, setMode, filter, setFilter, view, setView, likedCount, savedCount, onCompose, onProfile, isOnProfile, allTags, tagFilter, setTagFilter, userFilter, setUserFilter, onNotifications, notifUnread, onAdmin, onFollow, followingIds, onShowProfile, user, t }) {
+function TopBar({ mode, setMode, filter, setFilter, view, setView, likedCount, savedCount, onCompose, onProfile, isOnProfile, allTags, tagFilter, setTagFilter, userFilter, setUserFilter, onNotifications, notifUnread, onMessages, msgUnread, onAdmin, onFollow, followingIds, onShowProfile, user, t }) {
   const notifBtnRef = useRef_c(null);
   const handleBell = () => {
     const r = notifBtnRef.current?.getBoundingClientRect();
@@ -40,6 +40,17 @@ function TopBar({ mode, setMode, filter, setFilter, view, setView, likedCount, s
               <path d="M12 3l8 3v5c0 5-3.5 8.5-8 9.5C7.5 19.5 4 16 4 11V6z"/>
               <path d="m9 12 2 2 4-4"/>
             </svg>
+          </button>
+        )}
+        {onMessages && (
+          <button className="ti-icn-btn ti-msg-btn" aria-label="messages"
+                  onClick={onMessages}>
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.6">
+              <path d="M3 6h18v11a1 1 0 0 1-1 1H8l-5 4z"/>
+            </svg>
+            {msgUnread > 0 && (
+              <span className="ti-icn-badge">{msgUnread > 9 ? '9+' : msgUnread}</span>
+            )}
           </button>
         )}
         <button ref={notifBtnRef} className="ti-icn-btn ti-bell" aria-label="notifications" onClick={handleBell}>
@@ -527,7 +538,7 @@ function ModeIndicator({ mode, view }) {
   return <div className="ti-mode-indicator" data-mode={mode}>{text}</div>;
 }
 
-function ProfileHeader({ user, view, setView, likedCount, savedCount, postCount, mode, onLogout, onEdit, onShowFollowers, onShowFollowing, followerCount, followingCount, isMe = true, isFollowing, onFollow, onBack, loading }) {
+function ProfileHeader({ user, view, setView, likedCount, savedCount, postCount, mode, onLogout, onEdit, onShowFollowers, onShowFollowing, followerCount, followingCount, isMe = true, isFollowing, onFollow, onMessage, onBack, loading }) {
   const u = user || {};
   const role = u.role || 'user';
   const joined = (() => {
@@ -597,10 +608,20 @@ function ProfileHeader({ user, view, setView, likedCount, savedCount, postCount,
               )}
             </>
           ) : (
-            <button className={`ti-follow-btn${isFollowing ? ' is-following' : ''}`}
-                    onClick={onFollow}>
-              {isFollowing ? 'Following' : 'Follow'}
-            </button>
+            <>
+              <button className={`ti-follow-btn${isFollowing ? ' is-following' : ''}`}
+                      onClick={onFollow}>
+                {isFollowing ? 'Following' : 'Follow'}
+              </button>
+              {onMessage && (
+                <button className="ti-profile-msg-btn" onClick={onMessage}>
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6">
+                    <path d="M3 6h18v11a1 1 0 0 1-1 1H8l-5 4z"/>
+                  </svg>
+                  <span>Message</span>
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>

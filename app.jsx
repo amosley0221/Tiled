@@ -128,6 +128,9 @@ function TiledApp({ tweaks }) {
   const [followListOpen, setFollowListOpen] = useState(null);   // 'followers' | 'following' | null
   const [pendingDelete, setPendingDelete] = useState({});       // { [tileId]: expiresAt }
   const deleteTimers = useRef({});
+  const [messages, setMessages] = useState([]);                 // all messages I'm party to
+  const [messagesOpen, setMessagesOpen] = useState(false);
+  const [activeThread, setActiveThread] = useState(null);       // partner user id (string) | null
   const [viewingProfileId, setViewingProfileId] = useState(null); // null = my profile (or off-profile)
   const [viewedProfile, setViewedProfile] = useState(null);       // profile_stats row when viewing another user
   const [viewedProfileLoading, setViewedProfileLoading] = useState(false);
@@ -161,7 +164,7 @@ function TiledApp({ tweaks }) {
   const loadFeed = async ({ silent = false } = {}) => {
     if (!supabase || !ME?.id) return;
     if (!silent) setFeedLoading(true);
-    const [feedRes, commentsRes, likesRes, savesRes, dismRes, votesRes, notifRes, statsRes, followingRes, followersRes] = await Promise.all([
+    const [feedRes, commentsRes, likesRes, savesRes, dismRes, votesRes, notifRes, statsRes, followingRes, followersRes, messagesRes] = await Promise.all([
       supabase.from('tile_feed').select('*').order('created_at', { ascending: false }),
       supabase.from('comments').select('*, author:profiles!comments_author_id_fkey(username,avatar,avatar_url)').order('created_at', { ascending: true }),
       supabase.from('likes').select('tile_id').eq('user_id', ME.id),
@@ -176,6 +179,11 @@ function TiledApp({ tweaks }) {
       supabase.from('profile_stats').select('follower_count, following_count').eq('id', ME.id).maybeSingle(),
       supabase.from('follows').select('followee_id').eq('follower_id', ME.id),
       supabase.from('follows').select('follower_id').eq('followee_id', ME.id),
+      supabase.from('messages')
+        .select('*, sender:profiles!messages_sender_id_fkey(id,username,name,avatar,avatar_url,role), recipient:profiles!messages_recipient_id_fkey(id,username,name,avatar,avatar_url,role)')
+        .or(`sender_id.eq.${ME.id},recipient_id.eq.${ME.id}`)
+        .order('created_at', { ascending: true })
+        .limit(500),
     ]);
 
     if (feedRes.error)     console.warn('[tiled] feed load failed:',     feedRes.error.message);
@@ -192,6 +200,8 @@ function TiledApp({ tweaks }) {
     setMyStats(statsRes.data || { follower_count: 0, following_count: 0 });
     setFollowingIds(new Set((followingRes.data || []).map(r => r.followee_id)));
     setFollowerIds(new Set((followersRes.data || []).map(r => r.follower_id)));
+    setMessages(messagesRes.data || []);
+    if (messagesRes.error) console.warn('[tiled] messages load failed:', messagesRes.error.message);
 
     const likedSet = new Set((likesRes.data || []).map(r => r.tile_id));
     const savedSet = new Set((savesRes.data || []).map(r => r.tile_id));
@@ -254,6 +264,62 @@ function TiledApp({ tweaks }) {
       })
       .subscribe();
 
+    // ── follows: live follower / following counts on all profiles in view
+    const refreshMyFollowState = async () => {
+      const [statsRes, followingRes, followersRes] = await Promise.all([
+        supabase.from('profile_stats').select('follower_count, following_count').eq('id', ME.id).maybeSingle(),
+        supabase.from('follows').select('followee_id').eq('follower_id', ME.id),
+        supabase.from('follows').select('follower_id').eq('followee_id', ME.id),
+      ]);
+      if (statsRes.data) setMyStats(statsRes.data);
+      setFollowingIds(new Set((followingRes.data || []).map(r => r.followee_id)));
+      setFollowerIds(new Set((followersRes.data || []).map(r => r.follower_id)));
+    };
+
+    const followsChannel = supabase
+      .channel('rt-follows')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'follows' }, async (payload) => {
+        const row = payload.new || payload.old;
+        if (!row) return;
+        if (row.follower_id === ME.id || row.followee_id === ME.id) {
+          refreshMyFollowState();
+        }
+        // If we're viewing another user's profile, refresh their stats too
+        if (viewingProfileId && (row.follower_id === viewingProfileId || row.followee_id === viewingProfileId)) {
+          const { data } = await supabase.from('profile_stats').select('*').eq('id', viewingProfileId).maybeSingle();
+          if (data) setViewedProfile(data);
+        }
+      })
+      .subscribe();
+
+    // ── messages: prepend new ones, update on read receipts
+    const messagesChannel = supabase
+      .channel('rt-messages')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, async (payload) => {
+        if (payload.eventType === 'INSERT') {
+          const row = payload.new;
+          if (!row) return;
+          if (row.sender_id !== ME.id && row.recipient_id !== ME.id) return;
+          // fetch with profile joins so the inbox can render avatars
+          const { data } = await supabase
+            .from('messages')
+            .select('*, sender:profiles!messages_sender_id_fkey(id,username,name,avatar,avatar_url,role), recipient:profiles!messages_recipient_id_fkey(id,username,name,avatar,avatar_url,role)')
+            .eq('id', row.id)
+            .maybeSingle();
+          if (!data) return;
+          setMessages(prev => prev.find(m => m.id === data.id) ? prev : [...prev, data]);
+        } else if (payload.eventType === 'UPDATE') {
+          const row = payload.new;
+          if (!row) return;
+          setMessages(prev => prev.map(m => m.id === row.id ? { ...m, read_at: row.read_at } : m));
+        } else if (payload.eventType === 'DELETE') {
+          const row = payload.old;
+          if (!row) return;
+          setMessages(prev => prev.filter(m => m.id !== row.id));
+        }
+      })
+      .subscribe();
+
     const notifChannel = supabase
       .channel('rt-notifications')
       .on('postgres_changes', {
@@ -279,8 +345,10 @@ function TiledApp({ tweaks }) {
     return () => {
       supabase.removeChannel(tilesChannel);
       supabase.removeChannel(notifChannel);
+      supabase.removeChannel(followsChannel);
+      supabase.removeChannel(messagesChannel);
     };
-  }, [ME?.id]);
+  }, [ME?.id, viewingProfileId]);
 
   useEffect(() => {
     if (!ME?.id) return;
@@ -559,6 +627,41 @@ function TiledApp({ tweaks }) {
         following_count: Math.max(0, (prev.following_count || 0) + (wasFollowing ? 1 : -1)),
       }));
     }
+  };
+
+  // ─── Direct messages
+  const openMessages = () => {
+    setMessagesOpen(true);
+    setActiveThread(null);
+  };
+  const openThreadWith = (partnerId) => {
+    if (!partnerId || partnerId === ME?.id) return;
+    setMessagesOpen(true);
+    setActiveThread(partnerId);
+  };
+  const handleSendMessage = async (recipientId, body) => {
+    if (!supabase || !ME?.id) return { ok: false, error: 'Not signed in.' };
+    const trimmed = (body || '').trim();
+    if (!trimmed) return { ok: false, error: 'Message can\'t be empty.' };
+    if (!recipientId || recipientId === ME.id) return { ok: false, error: 'Bad recipient.' };
+    const { data, error } = await supabase
+      .from('messages')
+      .insert({ sender_id: ME.id, recipient_id: recipientId, body: trimmed.slice(0, 1000) })
+      .select('*, sender:profiles!messages_sender_id_fkey(id,username,name,avatar,avatar_url,role), recipient:profiles!messages_recipient_id_fkey(id,username,name,avatar,avatar_url,role)')
+      .single();
+    if (error) return { ok: false, error: error.message };
+    // realtime will push the row too — dedupe in setMessages
+    setMessages(prev => prev.find(m => m.id === data.id) ? prev : [...prev, data]);
+    return { ok: true };
+  };
+  const handleMarkThreadRead = async (partnerId) => {
+    if (!supabase || !ME?.id || !partnerId) return;
+    const unreadIds = messages
+      .filter(m => m.recipient_id === ME.id && m.sender_id === partnerId && !m.read_at)
+      .map(m => m.id);
+    if (!unreadIds.length) return;
+    setMessages(prev => prev.map(m => unreadIds.includes(m.id) ? { ...m, read_at: new Date().toISOString() } : m));
+    await supabase.from('messages').update({ read_at: new Date().toISOString() }).in('id', unreadIds);
   };
 
   // ─── Avatar upload / clear (Supabase Storage 'avatars' bucket)
@@ -845,6 +948,8 @@ function TiledApp({ tweaks }) {
               isOnProfile={onProfile}
               onNotifications={handleOpenNotifications}
               notifUnread={notifications.filter(n => n.unread).length}
+              onMessages={openMessages}
+              msgUnread={messages.filter(m => m.recipient_id === ME.id && !m.read_at).length}
               onAdmin={() => setAdminOpen(true)}
               onFollow={handleFollow}
               followingIds={followingIds}
@@ -878,6 +983,7 @@ function TiledApp({ tweaks }) {
               followingCount={viewedProfile?.following_count || 0}
               isFollowing={followingIds.has(viewingProfileId)}
               onFollow={() => handleFollow(viewingProfileId)}
+              onMessage={() => openThreadWith(viewingProfileId)}
               onShowFollowers={() => setFollowListOpen('followers')}
               onShowFollowing={() => setFollowListOpen('following')}
               onBack={exitOtherProfile}
@@ -991,6 +1097,16 @@ function TiledApp({ tweaks }) {
 
       {adminOpen && (ME.role === 'admin' || ME.role === 'owner') && (
         <AdminPanel user={ME} onClose={() => setAdminOpen(false)} />
+      )}
+
+      {messagesOpen && (
+        <MessagesPanel messages={messages} me={ME}
+                       activeThread={activeThread}
+                       setActiveThread={setActiveThread}
+                       onClose={() => { setMessagesOpen(false); setActiveThread(null); }}
+                       onSend={handleSendMessage}
+                       onMarkRead={handleMarkThreadRead}
+                       onOpenProfile={openProfileForUser} />
       )}
 
       {editProfileOpen && (

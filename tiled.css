@@ -3613,6 +3613,256 @@ button {
   cursor: not-allowed;
 }
 
+/* ───── Direct messages ───── */
+.ti-msg-btn { position: relative; }
+
+.ti-msg-overlay {
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 76px 28px 28px;
+}
+.ti-msg-panel {
+  position: relative;
+  width: min(440px, 92vw);
+  height: min(680px, calc(100vh - 110px));
+  display: flex; flex-direction: column;
+  background: linear-gradient(180deg, #131315 0%, #08080a 60%, #050506 100%);
+  border: 0.5px solid rgba(255,255,255,0.1);
+  border-radius: 22px;
+  overflow: hidden;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255, calc(0.14 * var(--gloss))),
+    0 30px 80px rgba(0,0,0,0.85),
+    0 0 0 1px rgba(255,255,255,0.04),
+    0 0 50px color-mix(in oklch, var(--accent) 10%, transparent);
+}
+.ti-msg-hd {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  padding: 18px 18px 14px 22px;
+  border-bottom: 0.5px solid var(--hairline);
+  flex-shrink: 0;
+}
+
+.ti-msg-list {
+  flex: 1; overflow-y: auto;
+  padding: 8px 12px 14px;
+  display: flex; flex-direction: column;
+  gap: 4px;
+}
+.ti-msg-row {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  background: transparent;
+  border: 0;
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text);
+  -webkit-tap-highlight-color: rgba(255,255,255,0.04);
+}
+.ti-msg-row:hover { background: rgba(255,255,255,0.04); }
+.ti-msg-row-meta { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ti-msg-row-top {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 8px;
+}
+.ti-msg-row-name {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: -0.005em;
+}
+.ti-msg-row-time {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+.ti-msg-row-bot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px;
+}
+.ti-msg-row-preview {
+  font-size: 12px;
+  color: var(--text-2);
+  letter-spacing: -0.005em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+.ti-msg-row-unread {
+  background: var(--accent);
+  color: #1a0e00;
+  font-family: var(--font-mono);
+  font-size: 9.5px; font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* Thread view */
+.ti-msg-thread {
+  display: flex; flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.ti-msg-thread-hd {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 0.5px solid var(--hairline);
+  flex-shrink: 0;
+}
+.ti-msg-thread-partner {
+  display: flex; align-items: center; gap: 10px;
+  flex: 1; min-width: 0;
+  background: transparent; border: 0;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text);
+}
+.ti-msg-thread-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ti-msg-thread-name {
+  font-size: 13.5px; font-weight: 500;
+  color: var(--text);
+}
+.ti-msg-thread-handle {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-3);
+}
+.ti-msg-thread-scroll {
+  flex: 1; overflow-y: auto;
+  padding: 14px 12px;
+  display: flex; flex-direction: column;
+  gap: 14px;
+}
+.ti-msg-thread-empty {
+  text-align: center;
+  padding: 40px 18px;
+  color: var(--text-3);
+  font-size: 13px;
+  letter-spacing: -0.005em;
+}
+.ti-msg-thread-empty b { color: var(--text); }
+
+.ti-msg-group {
+  display: flex; gap: 8px; align-items: flex-end;
+}
+.ti-msg-group .ti-admin-user-avatar {
+  width: 28px; height: 28px;
+  font-size: 10px;
+  flex-shrink: 0;
+}
+.ti-msg-group.is-mine {
+  flex-direction: row-reverse;
+}
+.ti-msg-group-bubbles {
+  display: flex; flex-direction: column;
+  gap: 3px;
+  max-width: 75%;
+  align-items: flex-start;
+}
+.ti-msg-group.is-mine .ti-msg-group-bubbles { align-items: flex-end; }
+.ti-msg-bubble {
+  background: linear-gradient(180deg, #1c1c1e, #131315);
+  border: 0.5px solid rgba(255,255,255,0.08);
+  color: var(--text);
+  padding: 9px 13px;
+  border-radius: 16px 16px 16px 4px;
+  font-size: 13.5px;
+  line-height: 1.4;
+  letter-spacing: -0.005em;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+.ti-msg-group.is-mine .ti-msg-bubble {
+  background: linear-gradient(180deg,
+    color-mix(in oklch, var(--accent) 92%, white) 0%,
+    var(--accent) 100%);
+  color: #1a0e00;
+  border-color: color-mix(in oklch, var(--accent) 50%, transparent);
+  border-radius: 16px 16px 4px 16px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.4);
+}
+.ti-msg-group-time {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--text-3);
+  margin-top: 3px;
+  padding: 0 4px;
+}
+
+.ti-msg-input {
+  flex-shrink: 0;
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, rgba(0,0,0,0.85), rgba(0,0,0,0.95));
+  border-top: 0.5px solid var(--hairline);
+}
+.ti-msg-input input {
+  flex: 1;
+  background: linear-gradient(180deg, #0c0c0e, #050506);
+  border: 0.5px solid rgba(255,255,255,0.1);
+  color: var(--text);
+  padding: 11px 14px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  font-family: var(--font-display);
+  outline: none;
+}
+.ti-msg-input input:focus {
+  border-color: color-mix(in oklch, var(--accent) 35%, rgba(255,255,255,0.1));
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 14%, transparent);
+}
+.ti-msg-input button[type="submit"] {
+  width: 36px; height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #f8f8f8, #c8c8c8);
+  color: #000;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.5);
+}
+.ti-msg-input button[type="submit"]:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Message button on other-user profile */
+.ti-profile-msg-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: transparent;
+  border: 0.5px solid rgba(255,255,255,0.1);
+  color: var(--text);
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+}
+.ti-profile-msg-btn:hover {
+  border-color: rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.03);
+}
+
+@media (max-width: 600px) {
+  .ti-msg-overlay {
+    padding: 0;
+  }
+  .ti-msg-panel {
+    width: 100%; height: 100vh; max-height: 100vh;
+    border-radius: 0;
+    border: 0;
+  }
+}
+
 /* ───── staff (admin/owner) shield button in top bar ───── */
 .ti-staff {
   position: relative;

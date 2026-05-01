@@ -1,6 +1,6 @@
 // overlays.jsx — expanded tile, comment rail, composer (with tags)
 
-const { useState: useState_o, useRef: useRef_o, useEffect: useEffect_o } = React;
+const { useState: useState_o, useRef: useRef_o, useEffect: useEffect_o, useMemo: useMemo_o } = React;
 
 function ExpandedTile({ tile, comments, onClose, onLike, onSave, onDelete, onComment, onVote, onTag, originRect, me, t }) {
   const isAuthor = me && tile.author && me.handle === tile.author.handle;
@@ -1242,6 +1242,254 @@ window.CommentRail = CommentRail;
 window.Composer = Composer;
 window.NotificationsPanel = NotificationsPanel;
 window.AdminPanel = AdminPanel;
+// ─────────────────────────────────────────────────────────────────────────
+// Messages — inbox panel + thread view. Inbox lists conversations sorted
+// by most-recent activity; selecting one opens the thread with a sticky
+// composer at the bottom. Realtime pushes new messages from the parent.
+// ─────────────────────────────────────────────────────────────────────────
+
+function MessagesPanel({ messages, me, activeThread, setActiveThread, onClose, onSend, onMarkRead, onOpenProfile }) {
+  useEffect_o(() => {
+    const onKey = (e) => { if (e.key === 'Escape') {
+      if (activeThread) setActiveThread(null);
+      else onClose();
+    } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [activeThread, onClose, setActiveThread]);
+
+  // Group messages by conversation partner
+  const threads = useMemo_o(() => {
+    if (!me?.id) return [];
+    const byPartner = new Map();
+    messages.forEach(m => {
+      const partnerId = m.sender_id === me.id ? m.recipient_id : m.sender_id;
+      const partnerProfile = m.sender_id === me.id ? m.recipient : m.sender;
+      if (!partnerProfile) return;
+      let entry = byPartner.get(partnerId);
+      if (!entry) {
+        entry = { partner: partnerProfile, messages: [], unread: 0, lastAt: null };
+        byPartner.set(partnerId, entry);
+      }
+      entry.messages.push(m);
+      if (m.recipient_id === me.id && !m.read_at) entry.unread += 1;
+      const t = new Date(m.created_at).getTime();
+      if (entry.lastAt == null || t > entry.lastAt) entry.lastAt = t;
+    });
+    return Array.from(byPartner.values()).sort((a, b) => b.lastAt - a.lastAt);
+  }, [messages, me?.id]);
+
+  const activeThreadData = useMemo_o(
+    () => activeThread ? threads.find(t => t.partner.id === activeThread) : null,
+    [threads, activeThread]);
+
+  // If we're targeting a partner without any messages yet, build a virtual thread
+  const virtualThread = useMemo_o(() => {
+    if (activeThread && !activeThreadData) {
+      // partner profile not in messages — fetched separately if needed
+      return { partner: { id: activeThread, name: '', username: '', avatar: '··' }, messages: [], unread: 0, lastAt: 0 };
+    }
+    return null;
+  }, [activeThread, activeThreadData]);
+
+  const thread = activeThreadData || virtualThread;
+
+  // Mark active thread read on open
+  useEffect_o(() => {
+    if (activeThread && onMarkRead) onMarkRead(activeThread);
+  }, [activeThread, messages.length]);
+
+  return (
+    <div className="ti-overlay ti-msg-overlay" onClick={onClose}>
+      <div className="ti-overlay-bg" />
+      <div className="ti-msg-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="ti-gloss" />
+        <div className="ti-gloss-edge" />
+
+        {!activeThread ? (
+          <>
+            <header className="ti-msg-hd">
+              <div>
+                <div className="ti-edit-eyebrow">Inbox</div>
+                <h2 className="ti-edit-title">Direct messages</h2>
+              </div>
+              <button className="ti-x ti-notif-x" onClick={onClose} aria-label="close">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7">
+                  <path d="m6 6 12 12M6 18 18 6"/>
+                </svg>
+              </button>
+            </header>
+            <div className="ti-msg-list">
+              {threads.length === 0 ? (
+                <div className="ti-notif-empty">
+                  <div className="ti-empty-mark"><span /><span /><span /><span /></div>
+                  <div className="ti-notif-empty-msg">No messages yet.</div>
+                  <div className="ti-notif-empty-sub">Open someone's profile and tap Message to start a chat.</div>
+                </div>
+              ) : threads.map(t => (
+                <button key={t.partner.id} className="ti-msg-row"
+                        onPointerDown={(e) => { e.stopPropagation(); setActiveThread(t.partner.id); }}>
+                  <div className={`ti-admin-user-avatar ti-role-ring-${t.partner.role}`}>
+                    {t.partner.avatar_url
+                      ? <img src={t.partner.avatar_url} alt={t.partner.avatar} />
+                      : t.partner.avatar}
+                  </div>
+                  <div className="ti-msg-row-meta">
+                    <div className="ti-msg-row-top">
+                      <span className="ti-msg-row-name">{t.partner.name || '@' + t.partner.username}</span>
+                      <span className="ti-msg-row-time">{relativeTime(new Date(t.lastAt).toISOString())}</span>
+                    </div>
+                    <div className="ti-msg-row-bot">
+                      <span className="ti-msg-row-preview">
+                        {t.messages[t.messages.length - 1].sender_id === me.id ? 'You: ' : ''}
+                        {t.messages[t.messages.length - 1].body}
+                      </span>
+                      {t.unread > 0 && <span className="ti-msg-row-unread">{t.unread}</span>}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <MessageThread thread={thread} me={me}
+                         onBack={() => setActiveThread(null)}
+                         onClose={onClose}
+                         onSend={(body) => onSend(thread.partner.id, body)}
+                         onOpenProfile={onOpenProfile} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MessageThread({ thread, me, onBack, onClose, onSend, onOpenProfile }) {
+  const [draft, setDraft] = useState_o('');
+  const [busy, setBusy] = useState_o(false);
+  const scrollRef = useRef_o(null);
+
+  // Auto-scroll to bottom on new messages
+  useEffect_o(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [thread.messages.length]);
+
+  const submit = async (e) => {
+    e?.preventDefault();
+    const body = draft.trim();
+    if (!body) return;
+    setBusy(true);
+    setDraft('');
+    const r = await onSend(body);
+    setBusy(false);
+    if (!r?.ok) {
+      // restore draft on failure
+      setDraft(body);
+    }
+  };
+
+  // Group consecutive messages from same sender for tighter rendering
+  const groups = [];
+  thread.messages.forEach(m => {
+    const last = groups[groups.length - 1];
+    if (last && last[0].sender_id === m.sender_id) last.push(m);
+    else groups.push([m]);
+  });
+
+  return (
+    <div className="ti-msg-thread">
+      <header className="ti-msg-thread-hd">
+        <button className="ti-mc-back" onPointerDown={(e) => { e.stopPropagation(); onBack(); }} aria-label="back">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7">
+            <path d="m15 6-6 6 6 6"/>
+          </svg>
+        </button>
+        <button className="ti-msg-thread-partner"
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  if (onOpenProfile) { onClose && onClose(); onOpenProfile(thread.partner.id); }
+                }}>
+          <div className={`ti-admin-user-avatar ti-role-ring-${thread.partner.role}`}>
+            {thread.partner.avatar_url
+              ? <img src={thread.partner.avatar_url} alt={thread.partner.avatar} />
+              : (thread.partner.avatar || '··')}
+          </div>
+          <div className="ti-msg-thread-info">
+            <div className="ti-msg-thread-name">{thread.partner.name || '@' + thread.partner.username}</div>
+            <div className="ti-msg-thread-handle">@{thread.partner.username}</div>
+          </div>
+        </button>
+        <button className="ti-x ti-notif-x" onClick={onClose} aria-label="close">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7">
+            <path d="m6 6 12 12M6 18 18 6"/>
+          </svg>
+        </button>
+      </header>
+
+      <div className="ti-msg-thread-scroll" ref={scrollRef}>
+        {groups.length === 0 && (
+          <div className="ti-msg-thread-empty">
+            Send the first message to <b>@{thread.partner.username}</b>.
+          </div>
+        )}
+        {groups.map((group, gi) => {
+          const fromMe = group[0].sender_id === me.id;
+          const partnerProfile = fromMe ? null : (group[0].sender || thread.partner);
+          return (
+            <div key={gi} className={`ti-msg-group${fromMe ? ' is-mine' : ''}`}>
+              {!fromMe && (
+                <div className={`ti-admin-user-avatar ti-role-ring-${partnerProfile?.role}`}>
+                  {partnerProfile?.avatar_url
+                    ? <img src={partnerProfile.avatar_url} alt={partnerProfile.avatar} />
+                    : (partnerProfile?.avatar || '··')}
+                </div>
+              )}
+              <div className="ti-msg-group-bubbles">
+                {group.map(m => (
+                  <div key={m.id} className="ti-msg-bubble" title={new Date(m.created_at).toLocaleString()}>
+                    {m.body}
+                  </div>
+                ))}
+                <div className="ti-msg-group-time">{relativeTime(group[group.length - 1].created_at)}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <form className="ti-msg-input" onSubmit={submit}>
+        <input value={draft}
+               onChange={(e) => setDraft(e.target.value)}
+               placeholder={`Message @${thread.partner.username}…`}
+               maxLength={1000}
+               autoFocus />
+        <button type="submit" disabled={busy || !draft.trim()} aria-label="Send message">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M5 12h14M13 6l6 6-6 6"/>
+          </svg>
+        </button>
+      </form>
+    </div>
+  );
+}
+
+// Tiny relativeTime helper duplicated here so overlays.jsx doesn't depend on app.jsx
+function relativeTime(iso) {
+  if (!iso) return 'now';
+  const d = new Date(iso);
+  const sec = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
+  if (sec < 60) return 'now';
+  const min = Math.floor(sec / 60);
+  if (min < 60) return min + 'm';
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return hr + 'h';
+  const day = Math.floor(hr / 24);
+  if (day < 7) return day + 'd';
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 window.EditProfileModal = EditProfileModal;
 window.FollowListModal = FollowListModal;
 window.MobileCommentSheet = MobileCommentSheet;
+window.MessagesPanel = MessagesPanel;
