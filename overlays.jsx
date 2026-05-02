@@ -631,7 +631,7 @@ function Composer({ onClose, onPost, mode, existingTags = [], onUploadMedia }) {
               onChange={(e) => setTagDraft(e.target.value)}
               onKeyDown={onTagKey}
               onBlur={() => tagDraft.trim() && addTag(tagDraft)}
-              placeholder={tags.length === 0 ? 'e.g. arsenal, photography, music…' : 'add another'}
+              placeholder={tags.length === 0 ? 'e.g. chelsea, photography, music…' : 'add another'}
               disabled={tags.length >= 5}
             />
           </div>
