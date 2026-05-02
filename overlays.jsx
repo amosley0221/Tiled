@@ -1460,6 +1460,10 @@ function describeConversation(conv, me) {
 
 function previewMessage(m) {
   if (!m) return '';
+  if (m.shared) {
+    const handle = m.shared.author?.handle || 'unknown';
+    return `↗ Shared @${handle}'s tile`;
+  }
   if (m.kind === 'text' || !m.kind) return m.body || '';
   if (m.kind === 'photo') return '📷 Photo' + (m.caption ? ' · ' + m.caption : '');
   if (m.kind === 'video') return '🎞️ Video' + (m.caption ? ' · ' + m.caption : '');
@@ -1735,8 +1739,80 @@ function MessageThread({ conv, threadMessages, me, onBack, onClose, onSend, onDe
 
 function MessageBubble({ m, fromMe, onDelete }) {
   const kind = m.kind || 'text';
-  let bubble;
+  const isShared = !!m.shared;
+  let inner;
+
   if (kind === 'photo' && m.media?.url) {
+    inner = (
+      <>
+        <div className="ti-msg-tile-media">
+          <img src={m.media.url} alt={m.caption || ''} />
+        </div>
+        {m.caption && <div className="ti-msg-tile-text">{m.caption}</div>}
+      </>
+    );
+  } else if (kind === 'video' && m.media?.url) {
+    inner = (
+      <>
+        <div className="ti-msg-tile-media">
+          <video src={m.media.url} controls playsInline preload="metadata" />
+        </div>
+        {m.caption && <div className="ti-msg-tile-text">{m.caption}</div>}
+      </>
+    );
+  } else if (kind === 'audio' && m.media?.url) {
+    inner = (
+      <>
+        <audio className="ti-msg-tile-audio" src={m.media.url} controls preload="metadata" />
+        {m.caption && <div className="ti-msg-tile-text">{m.caption}</div>}
+      </>
+    );
+  } else if (kind === 'link' && m.link) {
+    inner = (
+      <a className="ti-msg-tile-link" href={m.link.url} target="_blank" rel="noopener noreferrer">
+        <div className="ti-linkcard-domain">{m.link.domain || m.link.url}</div>
+        <div className="ti-linkcard-title">{m.link.title || m.link.url}</div>
+        {m.link.excerpt && <div className="ti-linkcard-excerpt">{m.link.excerpt}</div>}
+      </a>
+    );
+  } else if (kind === 'poll' && m.poll) {
+    const options = m.poll.options || [];
+    inner = (
+      <>
+        {m.body && <div className="ti-msg-tile-text">{m.body}</div>}
+        <div className="ti-msg-tile-poll">
+          {options.map((o, i) => (
+            <div key={i} className="ti-msg-tile-poll-opt">{o.label || o.text || o}</div>
+          ))}
+        </div>
+      </>
+    );
+  } else {
+    inner = (
+      <div className="ti-msg-tile-text">{m.body || m.caption || ''}</div>
+    );
+  }
+
+  let bubble;
+  if (isShared) {
+    const a = m.shared.author || {};
+    bubble = (
+      <div className="ti-msg-bubble ti-msg-bubble-tile" title={new Date(m.created_at).toLocaleString()}>
+        <div className="ti-msg-tile-hd">
+          <div className={`ti-msg-tile-avatar ti-role-ring-${a.role || ''}`}>
+            {a.avatar_url
+              ? <img src={a.avatar_url} alt={a.avatar || ''} />
+              : (a.avatar || (a.handle ? a.handle.slice(0, 2).toUpperCase() : '··'))}
+          </div>
+          <div className="ti-msg-tile-meta">
+            <div className="ti-msg-tile-author">{a.name || a.handle || 'unknown'}</div>
+            <div className="ti-msg-tile-handle">@{a.handle || 'unknown'} · shared tile</div>
+          </div>
+        </div>
+        <div className="ti-msg-tile-body">{inner}</div>
+      </div>
+    );
+  } else if (kind === 'photo' && m.media?.url) {
     bubble = (
       <div className="ti-msg-bubble ti-msg-bubble-media">
         <img src={m.media.url} alt={m.caption || ''} />
