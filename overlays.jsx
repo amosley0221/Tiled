@@ -1476,6 +1476,9 @@ function previewMessage(m) {
 }
 
 function ConvAvatar({ conv, me }) {
+  if (!conv) {
+    return <div className="ti-admin-user-avatar">··</div>;
+  }
   const others = (conv.members || []).filter(m => m.user_id !== me?.id).map(m => m.profile).filter(Boolean);
   if (conv.type === 'group' && others.length >= 2) {
     const a = others[0], b = others[1];
@@ -1620,6 +1623,29 @@ function MessageThread({ conv, threadMessages, me, onBack, onClose, onSend, onDe
     return -1;
   })();
   const lastMineSeen = lastMineIdx >= 0 && lastSeenAt >= new Date(threadMessages[lastMineIdx].created_at).getTime();
+
+  // Guard against the brief moment between creating a new conversation
+  // and the row landing in local state — without this, downstream calls
+  // (e.g. ConvAvatar) would dereference null and crash the whole panel.
+  if (!conv) {
+    return (
+      <div className="ti-msg-thread">
+        <header className="ti-msg-thread-hd">
+          <button className="ti-mc-back" onPointerDown={(e) => { e.stopPropagation(); onBack && onBack(); }} aria-label="back">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7">
+              <path d="m15 6-6 6 6 6"/>
+            </svg>
+          </button>
+          <div className="ti-msg-thread-info"><div className="ti-msg-thread-name">Loading…</div></div>
+          <button className="ti-x ti-notif-x" onClick={onClose} aria-label="close">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7">
+              <path d="m6 6 12 12M6 18 18 6"/>
+            </svg>
+          </button>
+        </header>
+      </div>
+    );
+  }
 
   return (
     <div className="ti-msg-thread">
