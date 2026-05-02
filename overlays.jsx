@@ -1068,7 +1068,7 @@ function AdminStats({ stats }) {
 // Edit profile modal
 // ─────────────────────────────────────────────────────────────────────────
 
-function EditProfileModal({ user, onClose, onSave, onUploadAvatar, onClearAvatar }) {
+function EditProfileModal({ user, onClose, onSave, onUploadAvatar, onClearAvatar, pushState, onEnablePush, onDisablePush }) {
   const [name, setName] = useState_o(user?.name || '');
   const [username, setUsername] = useState_o(user?.handle || '');
   const [avatar, setAvatar] = useState_o(user?.avatar || '');
@@ -1198,6 +1198,28 @@ function EditProfileModal({ user, onClose, onSave, onUploadAvatar, onClearAvatar
         </label>
 
         {error && <div className="ti-auth-err">{error}</div>}
+
+        {onEnablePush && (
+          <div className="ti-edit-field ti-push-row">
+            <div>
+              <span className="ti-edit-lbl">Push notifications</span>
+              <span className="ti-edit-hint">
+                {pushState === 'unsupported' ? 'Not available in this browser. Install the app to your home screen on iOS.'
+                 : pushState === 'denied' ? 'Blocked. Enable in your browser settings, then try again.'
+                 : pushState === 'on' ? 'On — you\'ll get notified about messages and follows.'
+                 : 'Off — turn on to receive alerts when the app is closed.'}
+              </span>
+            </div>
+            <button type="button"
+                    className={`ti-push-toggle${pushState === 'on' ? ' is-on' : ''}`}
+                    disabled={pushState === 'busy' || pushState === 'unsupported' || pushState === 'denied'}
+                    onClick={pushState === 'on' ? onDisablePush : onEnablePush}>
+              {pushState === 'busy' ? '…'
+               : pushState === 'on' ? 'Turn off'
+               : 'Enable'}
+            </button>
+          </div>
+        )}
 
         <footer className="ti-edit-ft">
           <button type="button" className="ti-btn-ghost" onClick={onClose}>Cancel</button>

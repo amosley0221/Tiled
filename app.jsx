@@ -165,6 +165,98 @@ function TiledApp({ tweaks }) {
     return () => document.documentElement.classList.remove(cls);
   }, [onProfile, viewingProfileId]);
 
+  // ───────────────────────── Push notifications ─────────────────────────
+  // Web Push for installed PWAs (Android Chrome, iOS 16.4+ home-screen).
+  // Subscription must happen inside a user gesture (handler from a button
+  // tap), and the public VAPID key in Tiled.html must be a real one for
+  // pushManager.subscribe to succeed.
+  const [pushState, setPushState] = useState('unknown'); // 'unknown' | 'unsupported' | 'denied' | 'off' | 'on' | 'busy'
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+    if (!supported) { setPushState('unsupported'); return; }
+    if (Notification.permission === 'denied') { setPushState('denied'); return; }
+    let cancelled = false;
+    navigator.serviceWorker.ready.then(reg => reg.pushManager.getSubscription())
+      .then(sub => { if (!cancelled) setPushState(sub ? 'on' : 'off'); })
+      .catch(() => { if (!cancelled) setPushState('off'); });
+    return () => { cancelled = true; };
+  }, [ME?.id]);
+
+  const urlBase64ToUint8Array = (base64) => {
+    const padding = '='.repeat((4 - base64.length % 4) % 4);
+    const b64 = (base64 + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const raw = atob(b64);
+    const out = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+    return out;
+  };
+
+  const handleEnablePush = async () => {
+    if (!supabase || !ME?.id) return;
+    const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+    if (!supported) { setPushState('unsupported'); return; }
+    setPushState('busy');
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') {
+        setPushState(perm === 'denied' ? 'denied' : 'off');
+        return;
+      }
+      const reg = await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        const key = window.VAPID_PUBLIC_KEY;
+        if (!key || key.startsWith('__REPLACE')) {
+          console.warn('[tiled] VAPID_PUBLIC_KEY not configured');
+          setPushState('off');
+          return;
+        }
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(key),
+        });
+      }
+      const json = sub.toJSON();
+      const { error } = await supabase.from('push_subscriptions').upsert({
+        user_id: ME.id,
+        endpoint: json.endpoint,
+        p256dh: json.keys.p256dh,
+        auth: json.keys.auth,
+        user_agent: navigator.userAgent.slice(0, 200),
+      }, { onConflict: 'user_id,endpoint' });
+      if (error) {
+        console.warn('[tiled] save push sub failed:', error.message);
+        setPushState('off');
+        return;
+      }
+      setPushState('on');
+    } catch (e) {
+      console.warn('[tiled] enable push failed:', e?.message || e);
+      setPushState('off');
+    }
+  };
+
+  const handleDisablePush = async () => {
+    if (!supabase || !ME?.id) return;
+    setPushState('busy');
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        try { await sub.unsubscribe(); } catch (_) {}
+        await supabase.from('push_subscriptions')
+          .delete()
+          .match({ user_id: ME.id, endpoint: sub.endpoint });
+      }
+      setPushState('off');
+    } catch (e) {
+      console.warn('[tiled] disable push failed:', e?.message || e);
+      setPushState('off');
+    }
+  };
+
   // Scroll-to-top helper used by the top-bar nav buttons. On the feed,
   // mandatory scroll-snap with a 64px scroll-padding for the sticky
   // top-bar pulls the page back to the first tile when scrollTop is 0
@@ -1522,7 +1614,10 @@ function TiledApp({ tweaks }) {
                           onClose={() => setEditProfileOpen(false)}
                           onSave={handleSaveProfile}
                           onUploadAvatar={handleUploadAvatar}
-                          onClearAvatar={handleClearAvatar} />
+                          onClearAvatar={handleClearAvatar}
+                          pushState={pushState}
+                          onEnablePush={handleEnablePush}
+                          onDisablePush={handleDisablePush} />
       )}
 
       {followListOpen && (
