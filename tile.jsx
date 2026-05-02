@@ -2,7 +2,7 @@
 
 const { useState: useState_t, useRef: useRef_t, useEffect: useEffect_t } = React;
 
-function Tile({ tile, comments, dismissing, me, onDismiss, onLike, onSave, onDelete, onExpand, onOpenComments, onVote, onTag, t }) {
+function Tile({ tile, comments, dismissing, me, onDismiss, onLike, onSave, onDelete, onShare, onExpand, onOpenComments, onVote, onTag, t }) {
   const [drag, setDrag] = useState_t({ x: 0, dragging: false });
   const [menuOpen, setMenuOpen] = useState_t(false);
   const [menuRect, setMenuRect] = useState_t(null);
@@ -131,7 +131,8 @@ function Tile({ tile, comments, dismissing, me, onDismiss, onLike, onSave, onDel
         <button className={`ti-tile-btn ti-save${tile.saved ? ' is-saved' : ''}`} onClick={onSave} aria-label="save">
           <BookmarkIcon filled={tile.saved} />
         </button>
-        <button className="ti-tile-btn ti-share" aria-label="share"><ShareIcon /></button>
+        <button className="ti-tile-btn ti-share" aria-label="share"
+                onClick={(e) => { e.stopPropagation(); onShare && onShare(); }}><ShareIcon /></button>
         <button className="ti-tile-btn ti-expand-btn" onClick={handleExpand} aria-label="expand"><ExpandIcon /></button>
       </footer>
     </article>

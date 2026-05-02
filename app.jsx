@@ -133,6 +133,7 @@ function TiledApp({ tweaks }) {
   const [messagesOpen, setMessagesOpen] = useState(false);
   const [activeThread, setActiveThread] = useState(null);       // conversation id (string) | null
   const [createConvOpen, setCreateConvOpen] = useState(false);
+  const [shareTileTarget, setShareTileTarget] = useState(null); // tile object being shared, or null
   const [typingByConv, setTypingByConv] = useState({});         // { [conversationId]: { [userId]: { name, avatar, until } } }
   const [viewingProfileId, setViewingProfileId] = useState(null); // null = my profile (or off-profile)
   const [viewedProfile, setViewedProfile] = useState(null);       // profile_stats row when viewing another user
@@ -775,6 +776,67 @@ function TiledApp({ tweaks }) {
     return { ok: true };
   };
 
+  // Build a DM payload from a tile so a shared tile renders inside the
+  // thread using the existing tile-format message kinds. Author attribution
+  // goes in the caption (or body for text-only kinds) so the recipient
+  // always sees who originally posted it.
+  const tileToMessagePayload = (tile) => {
+    if (!tile) return null;
+    const handle = tile.author?.handle || 'unknown';
+    const attribution = `Shared from @${handle}`;
+    if ((tile.kind === 'photo' || tile.kind === 'video' || tile.kind === 'audio') && tile.media?.url) {
+      return {
+        kind: tile.kind,
+        caption: tile.caption ? `${attribution} · ${tile.caption}` : attribution,
+        media: tile.media,
+      };
+    }
+    if (tile.kind === 'link' && tile.link?.url) {
+      return { kind: 'link', body: attribution, link: tile.link };
+    }
+    // text / poll / chart / grid / live → degrade to a text snippet
+    const snippet = (tile.body || tile.caption || `[${tile.kind} tile]`).slice(0, 800);
+    return { kind: 'text', body: `${attribution}:\n${snippet}` };
+  };
+
+  // Send the currently-staged tile as a DM into an existing conversation,
+  // or to a user (creating/finding the 1:1 DM first).
+  const handleShareTile = async ({ conversationId, userId } = {}) => {
+    const tile = shareTileTarget;
+    if (!tile) return { ok: false, error: 'No tile selected.' };
+    let convId = conversationId;
+    if (!convId && userId) {
+      convId = await findOrCreateDmConversation(userId);
+      if (!convId) return { ok: false, error: 'Could not open conversation.' };
+    }
+    if (!convId) return { ok: false, error: 'Pick a conversation.' };
+    const payload = tileToMessagePayload(tile);
+    if (!payload) return { ok: false, error: 'Nothing to share.' };
+    const r = await handleSendMessage(convId, payload);
+    if (!r.ok) return r;
+    setShareTileTarget(null);
+    setMessagesOpen(true);
+    setActiveThread(convId);
+    return { ok: true };
+  };
+
+  // Delete one of my own messages. Optimistically removes it locally so the
+  // bubble disappears immediately; if the DB call fails we refetch so the
+  // UI re-syncs. RLS only allows sender_id = auth.uid() to delete.
+  const handleDeleteMessage = async (messageId) => {
+    if (!supabase || !ME?.id || !messageId) return { ok: false };
+    const target = messages.find(m => m.id === messageId);
+    if (!target || target.sender_id !== ME.id) return { ok: false };
+    setMessages(prev => prev.filter(m => m.id !== messageId));
+    const { error } = await supabase.from('messages').delete().eq('id', messageId);
+    if (error) {
+      console.warn('[tiled] delete message failed:', error.message);
+      await loadFeed({ silent: true });
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  };
+
   const handleMarkConvRead = async (conversationId) => {
     if (!supabase || !ME?.id || !conversationId) return;
     // optimistic — update last_read_at on my membership locally
@@ -801,9 +863,13 @@ function TiledApp({ tweaks }) {
   const handleUploadTileMedia = async (file) => {
     if (!supabase || !ME?.id) return { ok: false, error: 'Not signed in.' };
     if (!file) return { ok: false, error: 'No file selected.' };
-    const isImage = /^image\/(png|jpeg|webp|gif)$/.test(file.type);
-    const isVideo = /^video\/(mp4|webm|quicktime)$/.test(file.type);
-    const isAudio = /^audio\/(mpeg|mp3|wav|ogg|webm|m4a|aac)$/.test(file.type);
+    // Accept any image/video/audio MIME — narrow allowlists were rejecting
+    // common phone-camera formats (HEIC from iOS, AAC m4a, etc.) so the
+    // upload silently no-op'd. We size-cap by family instead.
+    const mt = file.type || '';
+    const isImage = mt.startsWith('image/');
+    const isVideo = mt.startsWith('video/');
+    const isAudio = mt.startsWith('audio/');
     if (!isImage && !isVideo && !isAudio)
       return { ok: false, error: 'Unsupported file type.' };
     const max = isVideo ? 25 * 1024 * 1024 : isAudio ? 15 * 1024 * 1024 : 10 * 1024 * 1024;
@@ -814,7 +880,10 @@ function TiledApp({ tweaks }) {
     const { error: upErr } = await supabase.storage
       .from('tile-media')
       .upload(path, file, { upsert: false, contentType: file.type, cacheControl: '3600' });
-    if (upErr) return { ok: false, error: upErr.message };
+    if (upErr) {
+      console.warn('[tiled] tile-media upload failed:', upErr.message);
+      return { ok: false, error: upErr.message };
+    }
     const { data } = supabase.storage.from('tile-media').getPublicUrl(path);
     return { ok: true, url: data.publicUrl, kind: isImage ? 'image' : isVideo ? 'video' : 'audio', mime: file.type, size: file.size };
   };
@@ -1225,6 +1294,7 @@ function TiledApp({ tweaks }) {
                       onLike={() => handleLike(tile.id)}
                       onSave={() => handleSave(tile.id)}
                       onDelete={() => handleDeleteTile(tile.id)}
+                      onShare={() => setShareTileTarget(tile)}
                       onExpand={(rect) => { setExpandOrigin(rect); setExpanded(tile.id); }}
                       onOpenComments={() => setCommentRail(tile.id)}
                       onVote={(optId) => handleVote(tile.id, optId)}
@@ -1290,12 +1360,22 @@ function TiledApp({ tweaks }) {
                        setActiveThread={setActiveThread}
                        onClose={() => { setMessagesOpen(false); setActiveThread(null); }}
                        onSend={handleSendMessage}
+                       onDeleteMessage={handleDeleteMessage}
                        onMarkRead={handleMarkConvRead}
                        onOpenProfile={openProfileForUser}
                        onUploadMedia={handleUploadTileMedia}
                        onTyping={sendTypingPing}
                        onCreateGroup={() => setCreateConvOpen(true)}
                        supabase={supabase} />
+      )}
+
+      {shareTileTarget && (
+        <ShareTileSheet me={ME}
+                        tile={shareTileTarget}
+                        conversations={conversations}
+                        followingIds={followingIds}
+                        onShare={handleShareTile}
+                        onClose={() => setShareTileTarget(null)} />
       )}
 
       {createConvOpen && (
