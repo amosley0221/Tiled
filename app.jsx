@@ -720,7 +720,27 @@ function TiledApp({ tweaks }) {
       { conversation_id: conv.id, user_id: partnerId },
     ]);
     if (mErr) { console.warn('[tiled] add dm members:', mErr.message); return null; }
-    // Realtime will fill in the conversation; return the id immediately
+    // Optimistically place the conversation into local state so anything
+    // that immediately reads it (e.g. opening the thread right after a
+    // share) has something to render. Realtime will overwrite this row
+    // with the canonical version when the INSERT events arrive.
+    const partnerProfile = await supabase
+      .from('profiles')
+      .select('id, username, name, avatar, avatar_url, role')
+      .eq('id', partnerId)
+      .maybeSingle();
+    const meProfile = {
+      id: ME.id, username: ME.handle, name: ME.name,
+      avatar: ME.avatar, avatar_url: ME.avatar_url, role: ME.role,
+    };
+    const optimistic = {
+      ...conv,
+      members: [
+        { conversation_id: conv.id, user_id: ME.id, last_read_at: null, joined_at: conv.created_at, profile: meProfile },
+        { conversation_id: conv.id, user_id: partnerId, last_read_at: null, joined_at: conv.created_at, profile: partnerProfile.data || null },
+      ],
+    };
+    setConversations(prev => prev.find(c => c.id === conv.id) ? prev : [optimistic, ...prev]);
     return conv.id;
   };
 
@@ -742,6 +762,21 @@ function TiledApp({ tweaks }) {
     const rows = [{ conversation_id: conv.id, user_id: ME.id }, ...ids.map(id => ({ conversation_id: conv.id, user_id: id }))];
     const { error: mErr } = await supabase.from('conversation_members').insert(rows);
     if (mErr) return { ok: false, error: mErr.message };
+    // Optimistic local placement so opening the thread doesn't try to
+    // render against a missing row while realtime catches up.
+    const profileRes = await supabase.from('profiles')
+      .select('id, username, name, avatar, avatar_url, role')
+      .in('id', [ME.id, ...ids]);
+    const byId = new Map((profileRes.data || []).map(p => [p.id, p]));
+    const optimistic = {
+      ...conv,
+      members: [ME.id, ...ids].map(uid => ({
+        conversation_id: conv.id, user_id: uid,
+        last_read_at: null, joined_at: conv.created_at,
+        profile: byId.get(uid) || null,
+      })),
+    };
+    setConversations(prev => prev.find(c => c.id === conv.id) ? prev : [optimistic, ...prev]);
     setActiveThread(conv.id);
     return { ok: true, conversationId: conv.id };
   };
