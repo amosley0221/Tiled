@@ -38,18 +38,24 @@ devices. Called by the `dispatch_push` SQL function (see
    This creates the `push_subscriptions` table, the `dispatch_push`
    helper, and triggers on `notifications` / `messages`.
 
-6. **Configure database GUCs** so `dispatch_push` knows where the
-   function lives and which key to call it with. Run once in SQL
-   editor (replace with your project URL and service role key from
+6. **Store the function URL and service-role key in Supabase Vault**
+   so `dispatch_push` can read them. Run once in the SQL editor
+   (replace with your project URL and service role key from
    Project Settings → API):
 
    ```sql
-   alter database postgres set "app.settings.send_push_url" = 'https://YOUR-REF.supabase.co/functions/v1/send-push';
-   alter database postgres set "app.settings.service_role_key" = 'YOUR-SERVICE-ROLE-KEY';
+   select vault.create_secret(
+     'https://YOUR-REF.supabase.co/functions/v1/send-push',
+     'send_push_url'
+   );
+   select vault.create_secret(
+     'YOUR-SERVICE-ROLE-KEY',
+     'service_role_key'
+   );
    ```
 
-   These reload on the next connection. Reconnect any pgbouncer/admin
-   sessions if needed.
+   To rotate later, use `vault.update_secret(id, new_value)` — find
+   the id with `select id, name from vault.secrets;`.
 
 ## Testing
 

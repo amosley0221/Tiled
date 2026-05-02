@@ -36,8 +36,9 @@ create policy push_subs_delete_own on public.push_subscriptions for delete
 -- ──────────────────────────────────────────────────────────────────────────
 -- Trigger: when a notification or message lands, call the send-push Edge
 -- Function. Requires the pg_net extension and the project URL + service
--- role key wired up via app.settings.* GUCs. See README in
--- supabase/functions/send-push/ for the exact deploy steps.
+-- role key stored in Supabase Vault as 'send_push_url' and
+-- 'service_role_key'. See README in supabase/functions/send-push/ for the
+-- exact deploy steps.
 -- ──────────────────────────────────────────────────────────────────────────
 create extension if not exists pg_net;
 
@@ -45,12 +46,16 @@ create or replace function public.dispatch_push(p_user_id uuid, p_payload jsonb)
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, vault
 as $$
 declare
-  fn_url text := current_setting('app.settings.send_push_url', true);
-  svc_key text := current_setting('app.settings.service_role_key', true);
+  fn_url  text;
+  svc_key text;
 begin
+  select decrypted_secret into fn_url
+    from vault.decrypted_secrets where name = 'send_push_url' limit 1;
+  select decrypted_secret into svc_key
+    from vault.decrypted_secrets where name = 'service_role_key' limit 1;
   if fn_url is null or svc_key is null then return; end if;
   perform net.http_post(
     url := fn_url,
