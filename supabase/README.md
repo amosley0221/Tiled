@@ -80,6 +80,9 @@ exists` before each `create policy`, etc. — so you can re-run it after edits.
   `mark_conversation_read` RPC + last_message_at trigger; creates the
   public `tile-media` storage bucket with owner-only write RLS for
   real photo/video/audio uploads on tiles and DMs.
+- `0009_fix_conv_creator_select.sql` — fix the RLS race where a
+  newly-created conversation couldn't be read back by its creator
+  before they were added to conversation_members.
 
 Run them in order. All migrations are idempotent.
 
