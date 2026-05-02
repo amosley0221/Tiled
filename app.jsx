@@ -1270,17 +1270,25 @@ function TiledApp({ tweaks }) {
               allTags={allTags} tagFilter={tagFilter} setTagFilter={setTagFilter}
               userFilter={userFilter} setUserFilter={setUserFilter}
               onCompose={() => setComposing(true)}
+              onLogoClick={() => {
+                // Tiled logo always returns you to the main feed.
+                setOnProfile(false);
+                setViewingProfileId(null);
+                setViewedProfile(null);
+                setView('feed');
+                setTagFilter(null);
+                setUserFilter(null);
+                if (mainRef.current) mainRef.current.scrollTo({ top: 0, behavior: 'auto' });
+              }}
               onProfile={() => {
-                if (viewingProfileId) {
-                  // currently looking at someone else — switch to my own profile
-                  setViewingProfileId(null);
-                  setViewedProfile(null);
-                  setOnProfile(true);
-                  setView('feed');
-                } else {
-                  setOnProfile(p => !p);
-                  setView('feed');
-                }
+                // Avatar always lands you on your own profile, scrolled to top —
+                // never toggles off, so it can't accidentally take you back to the
+                // feed mid-scroll.
+                setViewingProfileId(null);
+                setViewedProfile(null);
+                setOnProfile(true);
+                setView('feed');
+                if (mainRef.current) mainRef.current.scrollTo({ top: 0, behavior: 'auto' });
               }}
               isOnProfile={onProfile}
               onNotifications={handleOpenNotifications}

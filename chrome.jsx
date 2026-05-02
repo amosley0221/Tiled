@@ -2,7 +2,7 @@
 
 const { useState: useState_c, useEffect: useEffect_c, useRef: useRef_c } = React;
 
-function TopBar({ mode, setMode, filter, setFilter, view, setView, likedCount, savedCount, onCompose, onProfile, isOnProfile, allTags, tagFilter, setTagFilter, userFilter, setUserFilter, onNotifications, notifUnread, onMessages, msgUnread, onAdmin, onFollow, followingIds, onShowProfile, user, t }) {
+function TopBar({ mode, setMode, filter, setFilter, view, setView, likedCount, savedCount, onCompose, onLogoClick, onProfile, isOnProfile, allTags, tagFilter, setTagFilter, userFilter, setUserFilter, onNotifications, notifUnread, onMessages, msgUnread, onAdmin, onFollow, followingIds, onShowProfile, user, t }) {
   const notifBtnRef = useRef_c(null);
   const handleBell = () => {
     const r = notifBtnRef.current?.getBoundingClientRect();
@@ -12,10 +12,12 @@ function TopBar({ mode, setMode, filter, setFilter, view, setView, likedCount, s
   return (
     <header className="ti-top">
       <div className="ti-top-l">
-        <div className="ti-logo">
+        <button type="button" className="ti-logo ti-logo-btn"
+                onClick={onLogoClick}
+                aria-label="Back to feed">
           <span className="ti-logo-mark"><span /><span /><span /><span /></span>
           <span className="ti-logo-word">Tiled</span>
-        </div>
+        </button>
       </div>
 
       <div className="ti-top-c">
