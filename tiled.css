@@ -455,8 +455,11 @@ button {
      so each one is a meaningful snap point. */
   /* Mandatory snap belongs only on the main feed. In profile view we
      want the bio to stay anchored at the top after a scroll-to-top, so
-     scope the snap rule out when <html> is tagged ti-on-profile. */
-  html:not(.ti-on-profile) {
+     scope the snap rule out when <html> is tagged ti-on-profile. The
+     ti-no-snap escape hatch is added briefly during programmatic
+     scroll-to-top so mandatory snap doesn't yank the page back to the
+     nearest tile (the FeedHeader sits above the scroll-padded snap zone). */
+  html:not(.ti-on-profile):not(.ti-no-snap) {
     scroll-snap-type: y mandatory;
     scroll-padding-top: 64px;
   }
