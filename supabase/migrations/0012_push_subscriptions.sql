@@ -94,7 +94,12 @@ returns trigger language plpgsql security definer set search_path = public as $$
 declare
   recipient record;
   preview text;
+  sender_name text;
 begin
+  select coalesce(name, username) into sender_name
+    from public.profiles where id = new.sender_id;
+  sender_name := coalesce(sender_name, 'Someone');
+
   preview := coalesce(
     case when new.kind = 'text' then new.body
          when new.kind = 'photo' then '📷 Photo'
@@ -114,7 +119,7 @@ begin
     perform public.dispatch_push(
       recipient.user_id,
       jsonb_build_object(
-        'title', 'New message',
+        'title', sender_name,
         'body', preview,
         'tag', 'conv:' || new.conversation_id::text,
         'url', '/'
