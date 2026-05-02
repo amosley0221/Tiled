@@ -1543,6 +1543,7 @@ function TiledApp({ tweaks }) {
                       onOpenComments={() => setCommentRail(tile.id)}
                       onVote={(optId) => handleVote(tile.id, optId)}
                       onTag={setTagFilter}
+                      onShowProfile={openProfileForUser}
                       t={t} />
                 )
               ))}
@@ -1575,6 +1576,7 @@ function TiledApp({ tweaks }) {
                       onComment={(body) => handleAddComment(expandedTile.id, body)}
                       onVote={(optId) => handleVote(expandedTile.id, optId)}
                       onTag={(tag) => { setTagFilter(tag); setExpanded(null); }}
+                      onShowProfile={(uid) => { setExpanded(null); openProfileForUser(uid); }}
                       commentStyle={t.commentStyle} t={t} />
       )}
 

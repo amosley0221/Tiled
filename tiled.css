@@ -354,6 +354,7 @@ button {
   font-family: inherit;
   cursor: pointer;
   white-space: nowrap;
+  touch-action: manipulation;
 }
 .ti-profile-edit:hover { background: rgba(255,255,255,0.08); }
 .ti-profile-toggle-row {
@@ -577,7 +578,7 @@ button {
   gap: 8px;
   position: relative; z-index: 2;
 }
-.ti-author { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.ti-author { display: flex; align-items: center; gap: 9px; min-width: 0; cursor: pointer; touch-action: manipulation; }
 .ti-avatar {
   width: 26px; height: 26px;
   border-radius: 50%;
@@ -3177,6 +3178,7 @@ button {
   font-weight: 600;
   letter-spacing: -0.005em;
   cursor: pointer;
+  touch-action: manipulation;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.6);
   flex-shrink: 0;
   transition: transform .12s ease, opacity .15s ease;
@@ -3207,6 +3209,7 @@ button {
   padding: 0;
   cursor: pointer;
   letter-spacing: inherit;
+  touch-action: manipulation;
 }
 .ti-profile-stat-btn:hover {
   color: var(--text);
@@ -4564,6 +4567,7 @@ button {
   font-family: var(--font-display);
   letter-spacing: -0.005em;
   cursor: pointer;
+  touch-action: manipulation;
 }
 .ti-profile-logout:hover {
   color: var(--text);
