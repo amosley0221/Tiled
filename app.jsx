@@ -165,6 +165,21 @@ function TiledApp({ tweaks }) {
     return () => document.documentElement.classList.remove(cls);
   }, [onProfile, viewingProfileId]);
 
+  // Scroll-to-top helper used by the top-bar nav buttons. On the feed,
+  // mandatory scroll-snap with a 64px scroll-padding for the sticky
+  // top-bar pulls the page back to the first tile when scrollTop is 0
+  // (the FeedHeader sits above the snap zone). Tag <html> with
+  // ti-no-snap to disable snap for ~400ms while the scroll completes,
+  // then re-enable it so the rest of the feed still snaps tile-by-tile.
+  const scrollHomeToTop = () => {
+    if (typeof document === 'undefined') return;
+    const html = document.documentElement;
+    html.classList.add('ti-no-snap');
+    if (mainRef.current) mainRef.current.scrollTo({ top: 0, behavior: 'auto' });
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'auto' });
+    setTimeout(() => html.classList.remove('ti-no-snap'), 400);
+  };
+
   const accentCSS = useMemo(() => ({
     gold: 'oklch(0.82 0.13 78)',
     platinum: 'oklch(0.94 0 0)',
@@ -1289,10 +1304,7 @@ function TiledApp({ tweaks }) {
                 setView('feed');
                 setTagFilter(null);
                 setUserFilter(null);
-                // Desktop: mainRef is the scroller. Mobile: the document is.
-                // Scroll both to be safe across viewports.
-                if (mainRef.current) mainRef.current.scrollTo({ top: 0, behavior: 'auto' });
-                if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'auto' });
+                scrollHomeToTop();
               }}
               onProfile={() => {
                 // Avatar always lands you on your own profile, scrolled to top —
@@ -1302,8 +1314,7 @@ function TiledApp({ tweaks }) {
                 setViewedProfile(null);
                 setOnProfile(true);
                 setView('feed');
-                if (mainRef.current) mainRef.current.scrollTo({ top: 0, behavior: 'auto' });
-                if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'auto' });
+                scrollHomeToTop();
               }}
               isOnProfile={onProfile}
               onNotifications={handleOpenNotifications}
