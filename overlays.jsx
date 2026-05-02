@@ -1332,7 +1332,7 @@ window.AdminPanel = AdminPanel;
 // composer at the bottom. Realtime pushes new messages from the parent.
 // ─────────────────────────────────────────────────────────────────────────
 
-function MessagesPanel({ messages, conversations, me, activeThread, setActiveThread, onClose, onSend, onDeleteMessage, onMarkRead, onOpenProfile, onUploadMedia, onTyping, onCreateGroup, supabase }) {
+function MessagesPanel({ messages, conversations, me, activeThread, setActiveThread, onClose, onSend, onDeleteMessage, onDeleteConversation, onMarkRead, onOpenProfile, onUploadMedia, onTyping, onCreateGroup, supabase }) {
   useEffect_o(() => {
     const onKey = (e) => { if (e.key === 'Escape') {
       if (activeThread) setActiveThread(null);
@@ -1404,31 +1404,11 @@ function MessagesPanel({ messages, conversations, me, activeThread, setActiveThr
                   <div className="ti-notif-empty-msg">No messages yet.</div>
                   <div className="ti-notif-empty-sub">Open someone's profile and tap Message — or create a group.</div>
                 </div>
-              ) : threads.map(t => {
-                const display = describeConversation(t.conv, me);
-                const last = t.messages[t.messages.length - 1];
-                return (
-                  <button key={t.conv.id} className="ti-msg-row"
-                          onPointerDown={(e) => { e.stopPropagation(); setActiveThread(t.conv.id); }}>
-                    <ConvAvatar conv={t.conv} me={me} />
-                    <div className="ti-msg-row-meta">
-                      <div className="ti-msg-row-top">
-                        <span className="ti-msg-row-name">{display.title}</span>
-                        <span className="ti-msg-row-time">{relativeTime(new Date(t.lastAt).toISOString())}</span>
-                      </div>
-                      <div className="ti-msg-row-bot">
-                        <span className="ti-msg-row-preview">
-                          {last
-                            ? (last.sender_id === me.id ? 'You: ' : (t.conv.type === 'group' ? (last.sender?.name || '') + ': ' : ''))
-                              + previewMessage(last)
-                            : <em>No messages yet</em>}
-                        </span>
-                        {t.unread > 0 && <span className="ti-msg-row-unread">{t.unread}</span>}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
+              ) : threads.map(t => (
+                <ConversationRow key={t.conv.id} thread={t} me={me}
+                                 onOpen={() => setActiveThread(t.conv.id)}
+                                 onDelete={onDeleteConversation} />
+              ))}
             </div>
           </>
         ) : (
@@ -1473,6 +1453,67 @@ function previewMessage(m) {
   if (m.kind === 'chart') return '📈 Chart · ' + (m.chart?.label || '');
   if (m.kind === 'grid')  return '🗂️ Grid · ' + (m.caption || '');
   return m.body || '';
+}
+
+// One inbox row, styled as a tile-style card. The main face is a button
+// that opens the thread; a sibling delete button (two-step confirm) sits
+// at the right edge so the user can remove the conversation from their
+// inbox without nesting interactive elements.
+function ConversationRow({ thread, me, onOpen, onDelete }) {
+  const [armed, setArmed] = useState_o(false);
+  const timerRef = useRef_o(null);
+  useEffect_o(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+
+  const display = describeConversation(thread.conv, me);
+  const last = thread.messages[thread.messages.length - 1];
+
+  const onDeleteClick = (e) => {
+    e.stopPropagation();
+    if (armed) {
+      if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+      setArmed(false);
+      onDelete && onDelete(thread.conv.id);
+      return;
+    }
+    setArmed(true);
+    timerRef.current = setTimeout(() => { setArmed(false); timerRef.current = null; }, 3000);
+  };
+
+  return (
+    <div className={`ti-msg-row-wrap${thread.unread > 0 ? ' has-unread' : ''}`}>
+      <button type="button" className="ti-msg-row"
+              onPointerDown={(e) => { e.stopPropagation(); onOpen && onOpen(); }}>
+        <ConvAvatar conv={thread.conv} me={me} />
+        <div className="ti-msg-row-meta">
+          <div className="ti-msg-row-top">
+            <span className="ti-msg-row-name">{display.title}</span>
+            <span className="ti-msg-row-time">{relativeTime(new Date(thread.lastAt).toISOString())}</span>
+          </div>
+          <div className="ti-msg-row-bot">
+            <span className="ti-msg-row-preview">
+              {last
+                ? (last.sender_id === me.id ? 'You: ' : (thread.conv.type === 'group' ? (last.sender?.name || '') + ': ' : ''))
+                  + previewMessage(last)
+                : <em>No messages yet</em>}
+            </span>
+            {thread.unread > 0 && <span className="ti-msg-row-unread">{thread.unread}</span>}
+          </div>
+        </div>
+      </button>
+      {onDelete && (
+        <button type="button"
+                className={`ti-msg-row-del${armed ? ' is-armed' : ''}`}
+                onClick={onDeleteClick}
+                aria-label={armed ? 'Confirm delete conversation' : 'Delete conversation'}>
+          {armed ? 'Confirm' : (
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.7">
+              <path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/>
+            </svg>
+          )}
+        </button>
+      )}
+    </div>
+  );
 }
 
 function ConvAvatar({ conv, me }) {
