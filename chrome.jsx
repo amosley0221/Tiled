@@ -569,7 +569,7 @@ function ModeIndicator({ mode, view }) {
   return <div className="ti-mode-indicator" data-mode={mode}>{text}</div>;
 }
 
-function ProfileHeader({ user, view, setView, likedCount, savedCount, postCount, mode, onLogout, onEdit, onShowFollowers, onShowFollowing, followerCount, followingCount, isMe = true, isFollowing, onFollow, onMessage, onBack, loading }) {
+function ProfileHeader({ user, view, setView, likedCount, savedCount, postCount, mode, onLogout, onEdit, onShowFollowers, onShowFollowing, followerCount, followingCount, isMe = true, isFollowing, onFollow, onMessage, onBack, loading, isPrivate, locked }) {
   const u = user || {};
   const role = u.role || 'user';
   const joined = (() => {
@@ -604,6 +604,14 @@ function ProfileHeader({ user, view, setView, likedCount, savedCount, postCount,
           <div className="ti-profile-name">
             {loading ? '…' : (u.name || (isMe ? 'You' : ''))}
             {role !== 'user' && <RoleBadge role={role} />}
+            {isPrivate && (
+              <span className="ti-profile-lock" title="Private account" aria-label="Private account">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <rect x="5" y="11" width="14" height="9" rx="2"/>
+                  <path d="M8 11V8a4 4 0 0 1 8 0v3"/>
+                </svg>
+              </span>
+            )}
           </div>
           <div className="ti-profile-handle">@{u.handle || ''} · joined {joined}</div>
           <div className="ti-profile-bio">
@@ -614,11 +622,13 @@ function ProfileHeader({ user, view, setView, likedCount, savedCount, postCount,
           <div className="ti-profile-stats">
             <span><strong>{postCount}</strong> tile{postCount === 1 ? '' : 's'}</span>
             <span className="ti-profile-stat-sep" />
-            <button className="ti-profile-stat-btn" onClick={onShowFollowers}>
+            <button className="ti-profile-stat-btn" onClick={locked ? undefined : onShowFollowers}
+                    disabled={locked} title={locked ? 'Follow to see followers' : undefined}>
               <strong>{followerN.toLocaleString()}</strong> follower{followerN === 1 ? '' : 's'}
             </button>
             <span className="ti-profile-stat-sep" />
-            <button className="ti-profile-stat-btn" onClick={onShowFollowing}>
+            <button className="ti-profile-stat-btn" onClick={locked ? undefined : onShowFollowing}
+                    disabled={locked} title={locked ? 'Follow to see following' : undefined}>
               <strong>{followingN.toLocaleString()}</strong> following
             </button>
           </div>
