@@ -582,16 +582,26 @@ function TiledApp({ tweaks }) {
 
   const visibleTiles = useMemo(() => {
     return tiles.filter(tile => {
-      // viewing another user's profile → only their public tiles
+      // viewing another user's profile → only their public tiles, filtered by mode
       if (onProfile && viewingProfileId) {
-        return tile.author.id === viewingProfileId && !tile.private;
+        if (tile.author.id !== viewingProfileId) return false;
+        if (tile.private) return false;
+        if (mode === 'private') return false;
+        if (mode === 'pro' && tile.mode !== 'pro') return false;
+        if (mode !== 'pro' && (tile.kind === 'chart' || tile.kind === 'grid')) return false;
+        return true;
       }
       // profile page scoping — only the user's own tiles, sub-filtered by view
       if (onProfile) {
         if (view === 'liked') return tile.liked && !tile.private;
         if (view === 'saved') return tile.saved && !tile.private;
-        // 'feed' on profile === their own posts
-        return tile.author.handle === ME.handle;
+        // 'feed' on profile === their own posts in the current mode
+        if (tile.author.handle !== ME.handle) return false;
+        if (mode === 'private') return tile.private;
+        if (tile.private) return false;
+        if (mode === 'pro' && tile.mode !== 'pro') return false;
+        if (mode !== 'pro' && (tile.kind === 'chart' || tile.kind === 'grid')) return false;
+        return true;
       }
 
       if (mode === 'private') return tile.private && tile.author.handle === ME.handle;

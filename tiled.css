@@ -467,7 +467,7 @@ button {
      ti-no-snap escape hatch is added briefly during programmatic
      scroll-to-top so mandatory snap doesn't yank the page back to the
      nearest tile (the FeedHeader sits above the scroll-padded snap zone). */
-  html:not(.ti-on-profile):not(.ti-no-snap) {
+  html:not(.ti-no-snap) {
     scroll-snap-type: y mandatory;
     scroll-padding-top: calc(64px + env(safe-area-inset-top));
   }
