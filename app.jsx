@@ -747,16 +747,19 @@ function TiledApp({ tweaks }) {
   };
 
   // Send a tile-format message into a conversation.
-  // payload: { kind, body, caption, media, link, poll, chart, grid, shared }
+  // payload: { kind, body, caption, media, link, poll, chart, grid }
+  // Shared-tile attribution rides inside link._share so we don't need a
+  // dedicated column on messages.
   const handleSendMessage = async (conversationId, payload) => {
     if (!supabase || !ME?.id) return { ok: false, error: 'Not signed in.' };
     if (!conversationId) return { ok: false, error: 'No conversation.' };
     const p = payload || {};
     const kind = p.kind || 'text';
     const body = (p.body || '').trim() || null;
+    const isShared = !!(p.link && p.link._share);
     // Text bubbles need a body; shared tiles can be empty since the tile
     // card carries the content (author header + caption / media / etc.)
-    if (kind === 'text' && !body && !p.shared)
+    if (kind === 'text' && !body && !isShared)
       return { ok: false, error: 'Message can\'t be empty.' };
     const insertRow = {
       sender_id: ME.id,
@@ -769,7 +772,6 @@ function TiledApp({ tweaks }) {
       poll:  p.poll  || null,
       chart: p.chart || null,
       grid:  p.grid  || null,
-      shared: p.shared || null,
     };
     const { data, error } = await supabase
       .from('messages').insert(insertRow)
@@ -781,11 +783,13 @@ function TiledApp({ tweaks }) {
   };
 
   // Build a DM payload from a tile. Preserves the tile's content (kind,
-  // body, media, etc.) verbatim and stores the original author in `shared`
-  // so the bubble can render as a proper tile card with an author header.
+  // body, media, etc.) verbatim and stuffs the original author into
+  // link._share so the bubble can render as a tile card. Using the
+  // existing link jsonb column means we don't need a schema migration to
+  // ship shared tiles.
   const tileToMessagePayload = (tile) => {
     if (!tile) return null;
-    const shared = {
+    const shareMeta = {
       tile_id: tile.id,
       kind: tile.kind,
       author: {
@@ -797,13 +801,18 @@ function TiledApp({ tweaks }) {
         role: tile.author?.role || null,
       },
     };
+    // For an actual link tile we keep the original link content and just
+    // tag _share on top; for everything else link is unused so we put
+    // _share alone.
+    const link = tile.kind === 'link' && tile.link
+      ? { ...tile.link, _share: shareMeta }
+      : { _share: shareMeta };
     // 'live' tiles can't be reproduced after the fact, so degrade to text.
-    // Everything else round-trips its content fields directly.
     if (tile.kind === 'live') {
       return {
         kind: 'text',
-        body: tile.caption || `[live tile from @${shared.author.handle}]`,
-        shared,
+        body: tile.caption || `[live tile from @${shareMeta.author.handle}]`,
+        link,
       };
     }
     return {
@@ -811,11 +820,10 @@ function TiledApp({ tweaks }) {
       body: tile.body || null,
       caption: tile.caption || null,
       media: tile.media || null,
-      link: tile.link || null,
+      link,
       poll: tile.poll || null,
       chart: tile.chart || null,
       grid: tile.grid || null,
-      shared,
     };
   };
 
