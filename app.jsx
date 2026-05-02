@@ -883,6 +883,26 @@ function TiledApp({ tweaks }) {
     return { ok: true };
   };
 
+  // Remove a conversation from my inbox by deleting my own membership row.
+  // The conversation itself stays in the DB for any other members; for me
+  // it disappears the moment local state drops it. RLS already permits
+  // deleting your own conversation_members row (members_delete_self).
+  const handleDeleteConversation = async (conversationId) => {
+    if (!supabase || !ME?.id || !conversationId) return { ok: false };
+    setConversations(prev => prev.filter(c => c.id !== conversationId));
+    setMessages(prev => prev.filter(m => m.conversation_id !== conversationId));
+    if (activeThread === conversationId) setActiveThread(null);
+    const { error } = await supabase.from('conversation_members')
+      .delete()
+      .match({ conversation_id: conversationId, user_id: ME.id });
+    if (error) {
+      console.warn('[tiled] leave conversation failed:', error.message);
+      await loadFeed({ silent: true });
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  };
+
   // Delete one of my own messages. Optimistically removes it locally so the
   // bubble disappears immediately; if the DB call fails we refetch so the
   // UI re-syncs. RLS only allows sender_id = auth.uid() to delete.
@@ -1424,6 +1444,7 @@ function TiledApp({ tweaks }) {
                        onClose={() => { setMessagesOpen(false); setActiveThread(null); }}
                        onSend={handleSendMessage}
                        onDeleteMessage={handleDeleteMessage}
+                       onDeleteConversation={handleDeleteConversation}
                        onMarkRead={handleMarkConvRead}
                        onOpenProfile={openProfileForUser}
                        onUploadMedia={handleUploadTileMedia}
