@@ -73,6 +73,13 @@ button {
 .ti-top-r { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
 
 .ti-logo { display: flex; align-items: center; gap: 10px; user-select: none; }
+.ti-logo-btn {
+  background: transparent; border: 0; padding: 0; margin: 0;
+  cursor: pointer; color: inherit; font: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+.ti-logo-btn:hover .ti-logo-word { color: var(--accent); }
+.ti-logo-btn:active { transform: scale(0.97); }
 .ti-logo-mark {
   display: grid; grid-template-columns: 1fr 1fr; gap: 1.5px;
   width: 18px; height: 18px;
