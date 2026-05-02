@@ -393,7 +393,7 @@ function FilterPill({ filter, setFilter }) {
   );
 }
 
-function FeedHeader({ mode, view, count, tagFilter, onClearTag, userFilter, onClearUser }) {
+function FeedHeader({ mode, view, count, tagFilter, onClearTag, userFilter, onClearUser, feedSource, onSetFeedSource, showFeedSource }) {
   let kicker, title;
   if (view === 'liked') {
     kicker = 'Library · Liked';
@@ -403,7 +403,12 @@ function FeedHeader({ mode, view, count, tagFilter, onClearTag, userFilter, onCl
     title = 'Saved for later';
   } else {
     const meta = {
-      social: { kicker: 'Feed · Social', title: 'Today, from the people you follow' },
+      social: {
+        kicker: 'Feed · Social',
+        title: feedSource === 'discover'
+          ? 'Discover what\'s new on Tiled'
+          : 'Today, from the people you follow',
+      },
       pro: { kicker: 'Feed · Professional', title: 'Work worth your attention' },
       private: { kicker: 'Feed · Private', title: 'Drafts and notes — only visible to you' },
     }[mode];
@@ -431,6 +436,30 @@ function FeedHeader({ mode, view, count, tagFilter, onClearTag, userFilter, onCl
           </>
         )}
       </div>
+      {showFeedSource && (
+        <FeedSourceToggle source={feedSource} setSource={onSetFeedSource} />
+      )}
+    </div>
+  );
+}
+
+function FeedSourceToggle({ source, setSource }) {
+  const opts = [
+    { id: 'following', label: 'Following' },
+    { id: 'discover',  label: 'Discover' },
+  ];
+  const idx = Math.max(0, opts.findIndex(o => o.id === source));
+  return (
+    <div className="ti-mode-toggle ti-feed-src" data-src={source}>
+      <div className="ti-mode-thumb"
+           style={{ left: `calc(4px + ${idx} * (100% - 8px) / 2)`, width: 'calc((100% - 8px) / 2)' }} />
+      {opts.map(o => (
+        <button key={o.id}
+                className={`ti-mode-btn${source === o.id ? ' is-active' : ''}`}
+                onClick={() => setSource(o.id)}>
+          <span>{o.label}</span>
+        </button>
+      ))}
     </div>
   );
 }
