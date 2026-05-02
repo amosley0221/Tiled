@@ -154,6 +154,17 @@ function TiledApp({ tweaks }) {
     };
   }, []);
 
+  // Toggle a class on <html> so the mobile scroll-snap-mandatory rule
+  // can be turned off in profile view. Without this, scrolling to top
+  // immediately snaps past the bio onto the first tile, causing the
+  // "bio flashes for a moment then shows the last tile" effect.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const cls = 'ti-on-profile';
+    document.documentElement.classList.toggle(cls, !!onProfile || !!viewingProfileId);
+    return () => document.documentElement.classList.remove(cls);
+  }, [onProfile, viewingProfileId]);
+
   const accentCSS = useMemo(() => ({
     gold: 'oklch(0.82 0.13 78)',
     platinum: 'oklch(0.94 0 0)',
