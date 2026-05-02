@@ -4049,7 +4049,14 @@ button {
     padding: 0;
   }
   .ti-msg-panel {
-    width: 100%; height: 100vh; max-height: 100vh;
+    width: 100%;
+    /* iOS Safari's URL bar overlays the bottom of 100vh, clipping the
+       input field. dvh tracks the actually-visible viewport (and shrinks
+       when the keyboard pops up), keeping the input reachable. */
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100vh;
+    max-height: 100dvh;
     border-radius: 0;
     border: 0;
   }
