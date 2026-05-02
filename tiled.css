@@ -3797,6 +3797,49 @@ button {
   padding: 0 4px;
 }
 
+/* Delete affordance for own messages — sits to the left of the bubble.
+   Hidden until the row is hovered (desktop) or tapped (touch via :focus-within
+   on the surrounding bubble). The button's own focus also reveals it. */
+.ti-msg-bubble-row {
+  display: flex; align-items: center; gap: 6px;
+  flex-direction: row-reverse; /* bubble first, button to its left */
+}
+.ti-msg-bubble-del {
+  flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 22px; height: 22px;
+  padding: 0 7px;
+  border-radius: 11px;
+  background: rgba(255,255,255,0.04);
+  border: 0.5px solid rgba(255,255,255,0.1);
+  color: var(--text-3);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease, background 120ms ease, color 120ms ease, border-color 120ms ease;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+.ti-msg-bubble-row:hover .ti-msg-bubble-del,
+.ti-msg-bubble-del:focus-visible,
+.ti-msg-bubble-del.is-armed {
+  opacity: 1;
+}
+.ti-msg-bubble-del:hover {
+  color: var(--text);
+  background: rgba(255,255,255,0.07);
+}
+.ti-msg-bubble-del.is-armed {
+  background: color-mix(in oklch, var(--accent-warn, #ff5a5f) 22%, transparent);
+  border-color: color-mix(in oklch, var(--accent-warn, #ff5a5f) 55%, transparent);
+  color: color-mix(in oklch, var(--accent-warn, #ff5a5f) 90%, white);
+}
+/* On touch devices hover doesn't apply — keep the button at low opacity so
+   it's discoverable without dominating the bubble. */
+@media (hover: none) {
+  .ti-msg-bubble-del { opacity: 0.55; }
+}
+
 .ti-msg-input {
   flex-shrink: 0;
   display: flex; align-items: center; gap: 8px;

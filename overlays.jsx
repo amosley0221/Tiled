@@ -1329,7 +1329,7 @@ window.AdminPanel = AdminPanel;
 // composer at the bottom. Realtime pushes new messages from the parent.
 // ─────────────────────────────────────────────────────────────────────────
 
-function MessagesPanel({ messages, conversations, me, activeThread, setActiveThread, onClose, onSend, onMarkRead, onOpenProfile, onUploadMedia, onTyping, onCreateGroup, supabase }) {
+function MessagesPanel({ messages, conversations, me, activeThread, setActiveThread, onClose, onSend, onDeleteMessage, onMarkRead, onOpenProfile, onUploadMedia, onTyping, onCreateGroup, supabase }) {
   useEffect_o(() => {
     const onKey = (e) => { if (e.key === 'Escape') {
       if (activeThread) setActiveThread(null);
@@ -1433,6 +1433,7 @@ function MessagesPanel({ messages, conversations, me, activeThread, setActiveThr
                          onBack={() => setActiveThread(null)}
                          onClose={onClose}
                          onSend={(payload) => onSend(activeThread, payload)}
+                         onDeleteMessage={onDeleteMessage}
                          onMarkRead={() => onMarkRead && onMarkRead(activeThread)}
                          onOpenProfile={onOpenProfile}
                          onUploadMedia={onUploadMedia}
@@ -1490,7 +1491,7 @@ function ConvAvatar({ conv, me }) {
   );
 }
 
-function MessageThread({ conv, threadMessages, me, onBack, onClose, onSend, onMarkRead, onOpenProfile, onUploadMedia, onTyping, supabase }) {
+function MessageThread({ conv, threadMessages, me, onBack, onClose, onSend, onDeleteMessage, onMarkRead, onOpenProfile, onUploadMedia, onTyping, supabase }) {
   const [draft, setDraft] = useState_o('');
   const [busy, setBusy] = useState_o(false);
   const [uploadingMedia, setUploadingMedia] = useState_o(false);
@@ -1670,7 +1671,7 @@ function MessageThread({ conv, threadMessages, me, onBack, onClose, onSend, onMa
                 {!fromMe && conv?.type === 'group' && senderProfile && (
                   <div className="ti-msg-group-name">{senderProfile.name || '@' + senderProfile.username}</div>
                 )}
-                {group.map(m => <MessageBubble key={m.id} m={m} fromMe={fromMe} />)}
+                {group.map(m => <MessageBubble key={m.id} m={m} fromMe={fromMe} onDelete={fromMe ? onDeleteMessage : null} />)}
                 <div className="ti-msg-group-time">{relativeTime(group[group.length - 1].created_at)}</div>
               </div>
             </div>
@@ -1729,44 +1730,89 @@ function MessageThread({ conv, threadMessages, me, onBack, onClose, onSend, onMa
   );
 }
 
-function MessageBubble({ m, fromMe }) {
+function MessageBubble({ m, fromMe, onDelete }) {
   const kind = m.kind || 'text';
+  let bubble;
   if (kind === 'photo' && m.media?.url) {
-    return (
+    bubble = (
       <div className="ti-msg-bubble ti-msg-bubble-media">
         <img src={m.media.url} alt={m.caption || ''} />
         {m.caption && <div className="ti-msg-bubble-caption">{m.caption}</div>}
       </div>
     );
-  }
-  if (kind === 'video' && m.media?.url) {
-    return (
+  } else if (kind === 'video' && m.media?.url) {
+    bubble = (
       <div className="ti-msg-bubble ti-msg-bubble-media">
         <video src={m.media.url} controls playsInline preload="metadata" />
         {m.caption && <div className="ti-msg-bubble-caption">{m.caption}</div>}
       </div>
     );
-  }
-  if (kind === 'audio' && m.media?.url) {
-    return (
+  } else if (kind === 'audio' && m.media?.url) {
+    bubble = (
       <div className="ti-msg-bubble ti-msg-bubble-audio">
         <audio src={m.media.url} controls preload="metadata" />
         {m.caption && <div className="ti-msg-bubble-caption">{m.caption}</div>}
       </div>
     );
-  }
-  if (kind === 'link' && m.link) {
-    return (
+  } else if (kind === 'link' && m.link) {
+    bubble = (
       <a className="ti-msg-bubble ti-msg-bubble-link" href={m.link.url} target="_blank" rel="noopener noreferrer">
         <div className="ti-linkcard-domain">{m.link.domain || m.link.url}</div>
         <div className="ti-linkcard-title">{m.link.title || m.link.url}</div>
         {m.link.excerpt && <div className="ti-linkcard-excerpt">{m.link.excerpt}</div>}
       </a>
     );
+  } else {
+    bubble = (
+      <div className="ti-msg-bubble" title={new Date(m.created_at).toLocaleString()}>
+        {m.body || ''}
+      </div>
+    );
   }
+
+  if (!fromMe || !onDelete) return bubble;
+
+  return <DeletableBubble onDelete={() => onDelete(m.id)}>{bubble}</DeletableBubble>;
+}
+
+// Wraps an own-message bubble with a two-step inline delete control.
+// First tap arms the confirm (button label flips to "Confirm"); second tap
+// within 3s commits the delete. The first tap is the "soft" state — the
+// bubble itself is non-interactive so a stray tap can't accidentally delete.
+function DeletableBubble({ children, onDelete }) {
+  const [armed, setArmed] = useState_o(false);
+  const timerRef = useRef_o(null);
+
+  useEffect_o(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+
+  const arm = (e) => {
+    e.stopPropagation();
+    if (armed) {
+      if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+      setArmed(false);
+      onDelete();
+      return;
+    }
+    setArmed(true);
+    timerRef.current = setTimeout(() => {
+      setArmed(false);
+      timerRef.current = null;
+    }, 3000);
+  };
+
   return (
-    <div className="ti-msg-bubble" title={new Date(m.created_at).toLocaleString()}>
-      {m.body || ''}
+    <div className="ti-msg-bubble-row">
+      <button type="button"
+              className={`ti-msg-bubble-del${armed ? ' is-armed' : ''}`}
+              onClick={arm}
+              aria-label={armed ? 'Confirm delete' : 'Delete message'}>
+        {armed ? 'Confirm' : (
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.7">
+            <path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/>
+          </svg>
+        )}
+      </button>
+      {children}
     </div>
   );
 }

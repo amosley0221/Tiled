@@ -775,6 +775,23 @@ function TiledApp({ tweaks }) {
     return { ok: true };
   };
 
+  // Delete one of my own messages. Optimistically removes it locally so the
+  // bubble disappears immediately; if the DB call fails we refetch so the
+  // UI re-syncs. RLS only allows sender_id = auth.uid() to delete.
+  const handleDeleteMessage = async (messageId) => {
+    if (!supabase || !ME?.id || !messageId) return { ok: false };
+    const target = messages.find(m => m.id === messageId);
+    if (!target || target.sender_id !== ME.id) return { ok: false };
+    setMessages(prev => prev.filter(m => m.id !== messageId));
+    const { error } = await supabase.from('messages').delete().eq('id', messageId);
+    if (error) {
+      console.warn('[tiled] delete message failed:', error.message);
+      await loadFeed({ silent: true });
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  };
+
   const handleMarkConvRead = async (conversationId) => {
     if (!supabase || !ME?.id || !conversationId) return;
     // optimistic — update last_read_at on my membership locally
@@ -1290,6 +1307,7 @@ function TiledApp({ tweaks }) {
                        setActiveThread={setActiveThread}
                        onClose={() => { setMessagesOpen(false); setActiveThread(null); }}
                        onSend={handleSendMessage}
+                       onDeleteMessage={handleDeleteMessage}
                        onMarkRead={handleMarkConvRead}
                        onOpenProfile={openProfileForUser}
                        onUploadMedia={handleUploadTileMedia}
