@@ -87,16 +87,17 @@ alter table public.messages alter column body drop not null;
 -- conversation_id is required from here on
 alter table public.messages alter column conversation_id set not null;
 
--- recipient_id is now redundant (membership lives on conversation_members)
-alter table public.messages drop column if exists recipient_id;
-
 -- ──────────────────────────────────────────────────────────────────────────
--- RLS: rewrite messages policies based on membership
+-- RLS: drop the old recipient-based policies BEFORE removing recipient_id,
+-- then rewrite based on conversation membership.
 -- ──────────────────────────────────────────────────────────────────────────
 drop policy if exists messages_select_own       on public.messages;
 drop policy if exists messages_insert_own       on public.messages;
 drop policy if exists messages_update_recipient on public.messages;
 drop policy if exists messages_delete_own       on public.messages;
+
+-- recipient_id is now redundant (membership lives on conversation_members)
+alter table public.messages drop column if exists recipient_id;
 
 create policy messages_select_member on public.messages for select
   using (exists (
