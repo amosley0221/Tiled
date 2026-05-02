@@ -469,12 +469,12 @@ button {
      nearest tile (the FeedHeader sits above the scroll-padded snap zone). */
   html:not(.ti-on-profile):not(.ti-no-snap) {
     scroll-snap-type: y mandatory;
-    scroll-padding-top: 64px;
+    scroll-padding-top: calc(64px + env(safe-area-inset-top));
   }
   .ti-grid > .ti-tile,
   .ti-grid > .ti-undo-slot {
     aspect-ratio: auto;
-    min-height: calc(100svh - 96px);
+    min-height: calc(100svh - 96px - env(safe-area-inset-top));
     scroll-snap-align: start;
     scroll-snap-stop: always;
   }
