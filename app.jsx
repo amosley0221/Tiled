@@ -93,7 +93,7 @@ function TiledApp({ tweaks }) {
   const t = tweaks;
   const auth = useAuth();
   const ME = useMemo(() => auth?.currentUser
-    ? { id: auth.currentUser.id, handle: auth.currentUser.username, name: auth.currentUser.name, avatar: auth.currentUser.avatar, avatar_url: auth.currentUser.avatar_url, role: auth.currentUser.role, email: auth.currentUser.email, bio: auth.currentUser.bio, createdAt: auth.currentUser.createdAt }
+    ? { id: auth.currentUser.id, handle: auth.currentUser.username, name: auth.currentUser.name, avatar: auth.currentUser.avatar, avatar_url: auth.currentUser.avatar_url, role: auth.currentUser.role, email: auth.currentUser.email, bio: auth.currentUser.bio, is_private: !!auth.currentUser.is_private, createdAt: auth.currentUser.createdAt }
     : ME_FALLBACK,
   [auth?.currentUser]);
   const supabase = window.supabaseClient;
@@ -1159,7 +1159,7 @@ function TiledApp({ tweaks }) {
   };
 
   // ─── Edit profile
-  const handleSaveProfile = async ({ name, avatar, bio, username }) => {
+  const handleSaveProfile = async ({ name, avatar, bio, username, isPrivate }) => {
     if (!supabase || !ME?.id) return { ok: false, error: 'Not signed in.' };
     const cleanAvatar = (avatar || '').slice(0, 4).toUpperCase();
     const cleanName = (name || '').trim().slice(0, 60);
@@ -1171,7 +1171,7 @@ function TiledApp({ tweaks }) {
     if (!/^[a-z0-9_.\-]{3,24}$/.test(cleanUsername))
       return { ok: false, error: 'Username must be 3–24 chars (letters, numbers, ._-).' };
 
-    const update = { name: cleanName, avatar: cleanAvatar, bio: cleanBio };
+    const update = { name: cleanName, avatar: cleanAvatar, bio: cleanBio, is_private: !!isPrivate };
     if (cleanUsername !== ME.handle) {
       // Verify uniqueness before attempting
       const { data: clash } = await supabase
@@ -1475,6 +1475,8 @@ function TiledApp({ tweaks }) {
               followerCount={viewedProfile?.follower_count || 0}
               followingCount={viewedProfile?.following_count || 0}
               isFollowing={followingIds.has(viewingProfileId)}
+              isPrivate={!!viewedProfile?.is_private}
+              locked={!!viewedProfile?.is_private && !followingIds.has(viewingProfileId)}
               onFollow={() => handleFollow(viewingProfileId)}
               onMessage={() => openThreadWith(viewingProfileId)}
               onShowFollowers={() => setFollowListOpen('followers')}
@@ -1491,6 +1493,7 @@ function TiledApp({ tweaks }) {
               followerCount={myStats.follower_count}
               followingCount={myStats.following_count}
               user={ME}
+              isPrivate={!!ME.is_private}
               onLogout={auth?.logout}
               onEdit={() => setEditProfileOpen(true)}
               onShowFollowers={() => setFollowListOpen('followers')}
@@ -1547,6 +1550,12 @@ function TiledApp({ tweaks }) {
                 <EmptyState view={view} tagFilter={tagFilter} mode={mode}
                             feedSource={feedSource}
                             onSwitchToDiscover={() => setFeedSourceOverride('discover')}
+                            lockedProfile={
+                              onProfile && !!viewingProfileId
+                              && !!viewedProfile?.is_private
+                              && !followingIds.has(viewingProfileId)
+                            }
+                            lockedProfileName={viewedProfile?.name || ''}
                             onCompose={() => setComposing(true)} />
               )}
             </>
@@ -1666,12 +1675,15 @@ function TiledApp({ tweaks }) {
   );
 }
 
-function EmptyState({ view, tagFilter, mode, feedSource, onSwitchToDiscover, onCompose }) {
+function EmptyState({ view, tagFilter, mode, feedSource, onSwitchToDiscover, lockedProfile, lockedProfileName, onCompose }) {
   let msg = 'Welcome to Tiled. Post your first tile to get started.';
   let cta = 'Post a tile';
   let ctaAction = onCompose;
   let showCta = true;
-  if (view === 'liked') {
+  if (lockedProfile) {
+    msg = `${lockedProfileName ? lockedProfileName + '’s' : 'This'} account is private. Follow to see their tiles.`;
+    showCta = false;
+  } else if (view === 'liked') {
     msg = 'No liked tiles yet. Tap the heart on a tile to add it here.';
     showCta = false;
   } else if (view === 'saved') {

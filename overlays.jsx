@@ -1074,6 +1074,7 @@ function EditProfileModal({ user, onClose, onSave, onUploadAvatar, onClearAvatar
   const [avatar, setAvatar] = useState_o(user?.avatar || '');
   const [avatarUrl, setAvatarUrl] = useState_o(user?.avatar_url || null);
   const [bio, setBio] = useState_o(user?.bio || '');
+  const [isPrivate, setIsPrivate] = useState_o(!!user?.is_private);
   const [busy, setBusy] = useState_o(false);
   const [uploading, setUploading] = useState_o(false);
   const [error, setError] = useState_o(null);
@@ -1110,7 +1111,7 @@ function EditProfileModal({ user, onClose, onSave, onUploadAvatar, onClearAvatar
     e?.preventDefault();
     setError(null);
     setBusy(true);
-    const r = await onSave({ name, avatar, bio, username });
+    const r = await onSave({ name, avatar, bio, username, isPrivate });
     setBusy(false);
     if (!r?.ok) setError(r?.error || 'Could not save changes.');
     else onClose();
@@ -1198,6 +1199,22 @@ function EditProfileModal({ user, onClose, onSave, onUploadAvatar, onClearAvatar
         </label>
 
         {error && <div className="ti-auth-err">{error}</div>}
+
+        <div className="ti-edit-field ti-push-row">
+          <div>
+            <span className="ti-edit-lbl">Private account</span>
+            <span className="ti-edit-hint">
+              {isPrivate
+                ? 'On — only your followers can see your tiles, follower list, and following list.'
+                : 'Off — anyone signed in to Tiled can see your tiles and connections.'}
+            </span>
+          </div>
+          <button type="button"
+                  className={`ti-push-toggle${isPrivate ? ' is-on' : ''}`}
+                  onClick={() => setIsPrivate(v => !v)}>
+            {isPrivate ? 'Turn off' : 'Make private'}
+          </button>
+        </div>
 
         {onEnablePush && (
           <div className="ti-edit-field ti-push-row">

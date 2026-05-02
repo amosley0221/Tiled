@@ -139,6 +139,7 @@ function AuthProvider({ children }) {
       avatar_url: profile.avatar_url || null,
       role: profile.role,
       bio: profile.bio || '',
+      is_private: !!profile.is_private,
       createdAt: profile.created_at,
     };
   }, [session, profile]);

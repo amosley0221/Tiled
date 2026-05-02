@@ -307,6 +307,12 @@ button {
   color: var(--text);
   letter-spacing: -0.01em;
   margin-bottom: 4px;
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.ti-profile-lock {
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--text-3);
+  opacity: 0.85;
 }
 .ti-profile-handle {
   font-family: var(--font-mono);
