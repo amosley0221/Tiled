@@ -453,7 +453,10 @@ button {
      topbar height so the snapped tile lands just below it.
      Tiles drop their square aspect ratio and fill the visible area
      so each one is a meaningful snap point. */
-  html {
+  /* Mandatory snap belongs only on the main feed. In profile view we
+     want the bio to stay anchored at the top after a scroll-to-top, so
+     scope the snap rule out when <html> is tagged ti-on-profile. */
+  html:not(.ti-on-profile) {
     scroll-snap-type: y mandatory;
     scroll-padding-top: 64px;
   }
