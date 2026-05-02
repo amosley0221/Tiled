@@ -480,9 +480,12 @@ function Composer({ onClose, onPost, mode, existingTags = [], onUploadMedia }) {
     setMedia({ url: r.url, mime: r.mime, kind: r.kind });
   };
 
-  const acceptForKind = kind === 'photo' ? 'image/png,image/jpeg,image/webp,image/gif'
-                     : kind === 'video' ? 'video/mp4,video/webm,video/quicktime'
-                     : kind === 'audio' ? 'audio/mpeg,audio/wav,audio/ogg,audio/webm'
+  // Keep accept loose so iOS / Android camera roll surfaces all media in
+  // the picker (HEIC photos, m4a audio, etc.). The actual MIME validation
+  // happens server-side via handleUploadTileMedia.
+  const acceptForKind = kind === 'photo' ? 'image/*'
+                     : kind === 'video' ? 'video/*'
+                     : kind === 'audio' ? 'audio/*'
                      : '';
 
   const submit = (e) => {
@@ -546,7 +549,7 @@ function Composer({ onClose, onPost, mode, existingTags = [], onUploadMedia }) {
         {(kind === 'photo' || kind === 'video' || kind === 'audio') && (
           <div className="ti-composer-dropzone" onClick={pickFile}>
             <input ref={fileRef} type="file" accept={acceptForKind}
-                   style={{ display: 'none' }}
+                   className="ti-file-hidden"
                    onChange={onFileChosen} />
             {media
               ? <div className="ti-composer-media-preview">
@@ -1704,8 +1707,8 @@ function MessageThread({ conv, threadMessages, me, onBack, onClose, onSend, onDe
 
       <form className="ti-msg-input" onSubmit={submit}>
         <input ref={fileRef} type="file"
-               accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime,audio/mpeg,audio/wav,audio/ogg,audio/webm"
-               style={{ display: 'none' }}
+               accept="image/*,video/*,audio/*"
+               className="ti-file-hidden"
                onChange={onFileChosen} />
         <button type="button" className="ti-msg-attach" onClick={onPickFile}
                 disabled={uploadingMedia} aria-label="Attach media">
@@ -1956,6 +1959,166 @@ function CreateConversationModal({ me, followingIds, onCreate, onClose }) {
   );
 }
 
+// Share-tile-as-DM sheet. Lists existing conversations + people I follow as
+// targets; tap one to send the tile through as a tile-format DM message.
+function ShareTileSheet({ me, tile, conversations, followingIds, onShare, onClose }) {
+  const supabase = window.supabaseClient;
+  const [busy, setBusy] = useState_o(false);
+  const [error, setError] = useState_o(null);
+  const [q, setQ] = useState_o('');
+  const [searchUsers, setSearchUsers] = useState_o([]);
+  const [followers, setFollowers] = useState_o([]);
+
+  useEffect_o(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  useEffect_o(() => {
+    if (!supabase || !me?.id) return;
+    let mounted = true;
+    (async () => {
+      const ids = Array.from(followingIds || []);
+      if (ids.length === 0) { setFollowers([]); return; }
+      const { data } = await supabase.from('profiles')
+        .select('id, username, name, avatar, avatar_url, role')
+        .in('id', ids).limit(40);
+      if (mounted) setFollowers(data || []);
+    })();
+    return () => { mounted = false; };
+  }, [supabase, me?.id]);
+
+  useEffect_o(() => {
+    if (!supabase) return;
+    const cleaned = q.trim().toLowerCase();
+    if (!cleaned) { setSearchUsers([]); return; }
+    let mounted = true;
+    const t = setTimeout(async () => {
+      const { data } = await supabase.from('profiles')
+        .select('id, username, name, avatar, avatar_url, role')
+        .or(`username.ilike.%${cleaned}%,name.ilike.%${cleaned}%`)
+        .neq('id', me?.id || '')
+        .limit(20);
+      if (mounted) setSearchUsers(data || []);
+    }, 180);
+    return () => { mounted = false; clearTimeout(t); };
+  }, [q, supabase, me?.id]);
+
+  const convTargets = useMemo_o(() => {
+    if (!me?.id || q.trim()) return [];
+    return (conversations || []).map(c => {
+      const display = describeConversation(c, me);
+      return { kind: 'conv', id: c.id, conv: c, title: display.title, sub: display.sub };
+    });
+  }, [conversations, me, q]);
+
+  const userTargets = useMemo_o(() => {
+    if (q.trim()) {
+      return (searchUsers || []).map(u => ({ kind: 'user', id: u.id, profile: u }));
+    }
+    const dmPartnerIds = new Set();
+    (conversations || []).forEach(c => {
+      if (c.type !== 'dm') return;
+      c.members?.forEach(m => { if (m.user_id !== me?.id) dmPartnerIds.add(m.user_id); });
+    });
+    return (followers || [])
+      .filter(u => !dmPartnerIds.has(u.id))
+      .map(u => ({ kind: 'user', id: u.id, profile: u }));
+  }, [followers, searchUsers, conversations, me, q]);
+
+  const submit = async (target) => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    const args = target.kind === 'conv'
+      ? { conversationId: target.id }
+      : { userId: target.id };
+    const r = await onShare(args);
+    // On success the parent unmounts this sheet, so we only touch state on
+    // failure to avoid a "set state on unmounted component" warning.
+    if (!r?.ok) {
+      setBusy(false);
+      setError(r?.error || 'Could not share.');
+    }
+  };
+
+  const previewLine = (tile.kind === 'photo' || tile.kind === 'video' || tile.kind === 'audio')
+    ? (tile.caption || `[${tile.kind}]`)
+    : (tile.body || tile.caption || `[${tile.kind}]`);
+
+  return (
+    <div className="ti-overlay ti-edit-overlay" onClick={onClose}>
+      <div className="ti-overlay-bg" />
+      <div className="ti-edit-modal ti-share-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="ti-gloss" /><div className="ti-gloss-edge" />
+        <header className="ti-edit-hd">
+          <div>
+            <div className="ti-edit-eyebrow">Share tile</div>
+            <h2 className="ti-edit-title">Send as a direct message</h2>
+          </div>
+          <button type="button" className="ti-x" onClick={onClose} aria-label="close">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7">
+              <path d="m6 6 12 12M6 18 18 6"/>
+            </svg>
+          </button>
+        </header>
+
+        <div className="ti-share-preview">
+          <div className="ti-share-preview-author">@{tile.author?.handle || 'unknown'}</div>
+          <div className="ti-share-preview-body">{previewLine}</div>
+        </div>
+
+        <label className="ti-edit-field">
+          <span className="ti-edit-lbl">Search people</span>
+          <input className="ti-auth-input"
+                 value={q} onChange={(e) => setQ(e.target.value)}
+                 placeholder="@username or name" />
+        </label>
+
+        {error && <div className="ti-auth-err">{error}</div>}
+
+        <div className="ti-msg-picker-list">
+          {!q.trim() && convTargets.length === 0 && userTargets.length === 0 && (
+            <div className="ti-search-empty">No conversations yet — search for someone to start one.</div>
+          )}
+          {convTargets.map(t => (
+            <button type="button" key={'c-' + t.id}
+                    className="ti-msg-picker-row"
+                    onClick={() => submit(t)} disabled={busy}>
+              <ConvAvatar conv={t.conv} me={me} />
+              <div className="ti-admin-user-meta">
+                <div className="ti-admin-user-name">{t.title}</div>
+                <div className="ti-admin-user-handle">
+                  {t.conv.type === 'group' ? `${t.conv.members?.length || 0} members` : (t.sub || '')}
+                </div>
+              </div>
+              <span className="ti-share-send">Send</span>
+            </button>
+          ))}
+          {userTargets.map(t => (
+            <button type="button" key={'u-' + t.id}
+                    className="ti-msg-picker-row"
+                    onClick={() => submit(t)} disabled={busy}>
+              <div className={`ti-admin-user-avatar ti-role-ring-${t.profile.role}`}>
+                {t.profile.avatar_url ? <img src={t.profile.avatar_url} alt={t.profile.avatar} /> : t.profile.avatar}
+              </div>
+              <div className="ti-admin-user-meta">
+                <div className="ti-admin-user-name">{t.profile.name}</div>
+                <div className="ti-admin-user-handle">@{t.profile.username}</div>
+              </div>
+              <span className="ti-share-send">Send</span>
+            </button>
+          ))}
+          {q.trim() && userTargets.length === 0 && (
+            <div className="ti-search-empty">No matches.</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Tiny relativeTime helper duplicated here so overlays.jsx doesn't depend on app.jsx
 function relativeTime(iso) {
   if (!iso) return 'now';
@@ -1976,3 +2139,4 @@ window.FollowListModal = FollowListModal;
 window.MobileCommentSheet = MobileCommentSheet;
 window.MessagesPanel = MessagesPanel;
 window.CreateConversationModal = CreateConversationModal;
+window.ShareTileSheet = ShareTileSheet;
