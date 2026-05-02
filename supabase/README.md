@@ -72,6 +72,14 @@ exists` before each `create policy`, etc. — so you can re-run it after edits.
   `tile_feed` and `profile_stats` views to include it, creates the
   public `avatars` storage bucket, and writes RLS on `storage.objects`
   so users can only upload to their own folder.
+- `0007_messages.sql` — direct messages between users (1:1 only).
+- `0008_conversations_and_media.sql` — adds conversations + members
+  tables for group DMs (existing 1:1 messages are migrated
+  automatically into 'dm' conversations); adds tile-format columns
+  on messages (kind/caption/media/link/poll/chart/grid); adds
+  `mark_conversation_read` RPC + last_message_at trigger; creates the
+  public `tile-media` storage bucket with owner-only write RLS for
+  real photo/video/audio uploads on tiles and DMs.
 
 Run them in order. All migrations are idempotent.
 

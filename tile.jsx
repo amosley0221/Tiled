@@ -142,22 +142,26 @@ function TileBody({ tile, onVote }) {
   switch (tile.kind) {
     case 'photo': return (
       <div className="ti-body ti-body-photo">
-        <MediaPlaceholder tone={tile.media.tone} kind="photo" label={tile.media.label} />
+        {tile.media?.url
+          ? <div className="ti-media ti-media-real"><img src={tile.media.url} alt={tile.caption || ''} loading="lazy" /></div>
+          : <MediaPlaceholder tone={tile.media?.tone} kind="photo" label={tile.media?.label} />}
         {tile.caption && <p className="ti-caption">{tile.caption}</p>}
       </div>
     );
     case 'video': return (
       <div className="ti-body ti-body-video">
-        <MediaPlaceholder tone={tile.media.tone} kind="video" label={tile.media.label} duration={tile.media.duration} />
+        {tile.media?.url
+          ? <div className="ti-media ti-media-real"><video src={tile.media.url} controls playsInline preload="metadata" /></div>
+          : <MediaPlaceholder tone={tile.media?.tone} kind="video" label={tile.media?.label} duration={tile.media?.duration} />}
         {tile.caption && <p className="ti-caption">{tile.caption}</p>}
       </div>
     );
     case 'live': return (
       <div className="ti-body ti-body-live">
-        <MediaPlaceholder tone={tile.media.tone} kind="live" />
+        <MediaPlaceholder tone={tile.media?.tone} kind="live" />
         <div className="ti-live-overlay">
           <div className="ti-live-dot" /><span>LIVE</span>
-          <span className="ti-live-viewers">{fmt(tile.media.viewers)} watching</span>
+          <span className="ti-live-viewers">{fmt(tile.media?.viewers || 0)} watching</span>
         </div>
         {tile.caption && <p className="ti-caption">{tile.caption}</p>}
       </div>
@@ -165,7 +169,9 @@ function TileBody({ tile, onVote }) {
     case 'text': return <div className="ti-body ti-body-text"><p className="ti-text">{tile.body}</p></div>;
     case 'audio': return (
       <div className="ti-body ti-body-audio">
-        <Waveform bars={tile.media.waveform} duration={tile.media.duration} />
+        {tile.media?.url
+          ? <audio className="ti-audio-real" src={tile.media.url} controls preload="metadata" />
+          : <Waveform bars={tile.media?.waveform || []} duration={tile.media?.duration} />}
         {tile.caption && <p className="ti-caption">{tile.caption}</p>}
       </div>
     );

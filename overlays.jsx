@@ -164,7 +164,21 @@ function ExpandedTile({ tile, comments, onClose, onLike, onSave, onDelete, onCom
 function ExpandedBody({ tile, onVote }) {
   switch (tile.kind) {
     case 'photo': case 'video': case 'live': {
-      const grad = `radial-gradient(120% 80% at 30% 20%, oklch(0.32 0.04 ${tile.media.tone}) 0%, oklch(0.14 0.02 ${tile.media.tone}) 50%, oklch(0.06 0.01 ${tile.media.tone}) 100%)`;
+      // If real media is uploaded, render the actual file
+      if (tile.media?.url && tile.kind !== 'live') {
+        return (
+          <>
+            <div className="ti-exp-media ti-exp-media-real">
+              {tile.kind === 'photo'
+                ? <img src={tile.media.url} alt={tile.caption || ''} />
+                : <video src={tile.media.url} controls playsInline preload="metadata" />}
+            </div>
+            {tile.caption && <p className="ti-exp-caption">{tile.caption}</p>}
+          </>
+        );
+      }
+      const tone = tile.media?.tone || 200;
+      const grad = `radial-gradient(120% 80% at 30% 20%, oklch(0.32 0.04 ${tone}) 0%, oklch(0.14 0.02 ${tone}) 50%, oklch(0.06 0.01 ${tone}) 100%)`;
       return (
         <>
           <div className="ti-exp-media" style={{ background: grad }}>
@@ -177,11 +191,11 @@ function ExpandedBody({ tile, onVote }) {
             {tile.kind === 'live' && (
               <div className="ti-live-overlay ti-live-overlay-lg">
                 <div className="ti-live-dot" /><span>LIVE</span>
-                <span className="ti-live-viewers">{fmt(tile.media.viewers)} watching</span>
+                <span className="ti-live-viewers">{fmt(tile.media?.viewers || 0)} watching</span>
               </div>
             )}
-            {tile.media.duration && <div className="ti-media-duration">{tile.media.duration}</div>}
-            {tile.media.label && <div className="ti-media-label">{tile.media.label}</div>}
+            {tile.media?.duration && <div className="ti-media-duration">{tile.media.duration}</div>}
+            {tile.media?.label && <div className="ti-media-label">{tile.media.label}</div>}
           </div>
           {tile.caption && <p className="ti-exp-caption">{tile.caption}</p>}
         </>
@@ -190,7 +204,9 @@ function ExpandedBody({ tile, onVote }) {
     case 'text': return <p className="ti-exp-text">{tile.body}</p>;
     case 'audio': return (
       <div className="ti-exp-audio">
-        <Waveform bars={tile.media.waveform} duration={tile.media.duration} />
+        {tile.media?.url
+          ? <audio className="ti-audio-real" src={tile.media.url} controls preload="metadata" />
+          : <Waveform bars={tile.media?.waveform || []} duration={tile.media?.duration} />}
         {tile.caption && <p className="ti-exp-caption">{tile.caption}</p>}
       </div>
     );
@@ -396,12 +412,16 @@ function CommentRail({ tile, comments, onClose, onComment, me }) {
   );
 }
 
-function Composer({ onClose, onPost, mode, existingTags = [] }) {
+function Composer({ onClose, onPost, mode, existingTags = [], onUploadMedia }) {
   const [kind, setKind] = useState_o('text');
   const [body, setBody] = useState_o('');
   const [tags, setTags] = useState_o([]);
   const [tagDraft, setTagDraft] = useState_o('');
+  const [media, setMedia] = useState_o(null);   // { url, mime } when uploaded
+  const [uploading, setUploading] = useState_o(false);
+  const [error, setError] = useState_o(null);
   const inputRef = useRef_o(null);
+  const fileRef = useRef_o(null);
 
   useEffect_o(() => {
     inputRef.current?.focus();
@@ -447,10 +467,35 @@ function Composer({ onClose, onPost, mode, existingTags = [] }) {
 
   const suggested = existingTags.filter(t => !tags.includes(t)).slice(0, 6);
 
+  const pickFile = () => fileRef.current?.click();
+  const onFileChosen = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !onUploadMedia) return;
+    setError(null);
+    setUploading(true);
+    const r = await onUploadMedia(file);
+    setUploading(false);
+    if (!r.ok) { setError(r.error); return; }
+    setMedia({ url: r.url, mime: r.mime, kind: r.kind });
+  };
+
+  const acceptForKind = kind === 'photo' ? 'image/png,image/jpeg,image/webp,image/gif'
+                     : kind === 'video' ? 'video/mp4,video/webm,video/quicktime'
+                     : kind === 'audio' ? 'audio/mpeg,audio/wav,audio/ogg,audio/webm'
+                     : '';
+
   const submit = (e) => {
     e?.preventDefault();
-    if (!body.trim()) return;
-    onPost(kind, body, tags);
+    setError(null);
+    // text/chart/grid require a body; media kinds can post with just media
+    const needsBody = kind === 'text' || kind === 'chart' || kind === 'grid' || kind === 'link' || kind === 'poll';
+    if (needsBody && !body.trim()) return;
+    if ((kind === 'photo' || kind === 'video' || kind === 'audio') && !media) {
+      setError('Pick a file first.');
+      return;
+    }
+    onPost(kind, body, tags, media);
   };
 
   return (
@@ -498,11 +543,38 @@ function Composer({ onClose, onPost, mode, existingTags = [] }) {
           }
         />
 
-        {kind !== 'text' && kind !== 'chart' && kind !== 'grid' && (
-          <div className="ti-composer-dropzone">
-            <span>{kind === 'photo' ? 'Drop or click to upload photo' : kind === 'video' ? 'Drop or click to upload video' : kind === 'audio' ? 'Tap to record audio' : kind === 'link' ? 'Paste URL above' : 'Add poll options below'}</span>
+        {(kind === 'photo' || kind === 'video' || kind === 'audio') && (
+          <div className="ti-composer-dropzone" onClick={pickFile}>
+            <input ref={fileRef} type="file" accept={acceptForKind}
+                   style={{ display: 'none' }}
+                   onChange={onFileChosen} />
+            {media
+              ? <div className="ti-composer-media-preview">
+                  {media.kind === 'image' && <img src={media.url} alt="" />}
+                  {media.kind === 'video' && <video src={media.url} muted />}
+                  {media.kind === 'audio' && <audio src={media.url} controls onClick={(e) => e.stopPropagation()} />}
+                  <button type="button" className="ti-composer-media-x"
+                          onClick={(e) => { e.stopPropagation(); setMedia(null); }}>×</button>
+                </div>
+              : <span>
+                  {uploading ? 'Uploading…'
+                   : kind === 'photo' ? 'Tap to upload a photo'
+                   : kind === 'video' ? 'Tap to upload a video'
+                   : 'Tap to upload audio'}
+                </span>}
           </div>
         )}
+        {kind === 'link' && (
+          <div className="ti-composer-dropzone">
+            <span>Paste URL in the box above (link unfurl coming later)</span>
+          </div>
+        )}
+        {kind === 'poll' && (
+          <div className="ti-composer-dropzone">
+            <span>Poll options coming after post (default 3 options)</span>
+          </div>
+        )}
+        {error && <div className="ti-auth-err">{error}</div>}
 
         {kind === 'chart' && (
           <div className="ti-composer-preview">
@@ -995,6 +1067,7 @@ function AdminStats({ stats }) {
 
 function EditProfileModal({ user, onClose, onSave, onUploadAvatar, onClearAvatar }) {
   const [name, setName] = useState_o(user?.name || '');
+  const [username, setUsername] = useState_o(user?.handle || '');
   const [avatar, setAvatar] = useState_o(user?.avatar || '');
   const [avatarUrl, setAvatarUrl] = useState_o(user?.avatar_url || null);
   const [bio, setBio] = useState_o(user?.bio || '');
@@ -1034,7 +1107,7 @@ function EditProfileModal({ user, onClose, onSave, onUploadAvatar, onClearAvatar
     e?.preventDefault();
     setError(null);
     setBusy(true);
-    const r = await onSave({ name, avatar, bio });
+    const r = await onSave({ name, avatar, bio, username });
     setBusy(false);
     if (!r?.ok) setError(r?.error || 'Could not save changes.');
     else onClose();
@@ -1101,6 +1174,18 @@ function EditProfileModal({ user, onClose, onSave, onUploadAvatar, onClearAvatar
         </label>
 
         <label className="ti-edit-field">
+          <span className="ti-edit-lbl">Username</span>
+          <div className="ti-edit-username-wrap">
+            <span className="ti-edit-username-at">@</span>
+            <input className="ti-auth-input ti-edit-username-input" maxLength={24}
+                   value={username}
+                   onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_.\-]/g, ''))}
+                   placeholder="yourhandle" />
+          </div>
+          <span className="ti-edit-hint">3–24 characters · letters, numbers, dots, dashes, underscores</span>
+        </label>
+
+        <label className="ti-edit-field">
           <span className="ti-edit-lbl">Bio</span>
           <textarea className="ti-auth-input ti-edit-bio" rows={3} maxLength={200}
                     value={bio}
@@ -1108,10 +1193,6 @@ function EditProfileModal({ user, onClose, onSave, onUploadAvatar, onClearAvatar
                     placeholder="A short line about you." />
           <span className="ti-edit-hint">{bio.length} / 200</span>
         </label>
-
-        <div className="ti-edit-handle-note">
-          Your username <b>@{user?.handle}</b> can't be changed.
-        </div>
 
         {error && <div className="ti-auth-err">{error}</div>}
 
@@ -1248,7 +1329,7 @@ window.AdminPanel = AdminPanel;
 // composer at the bottom. Realtime pushes new messages from the parent.
 // ─────────────────────────────────────────────────────────────────────────
 
-function MessagesPanel({ messages, me, activeThread, setActiveThread, onClose, onSend, onMarkRead, onOpenProfile }) {
+function MessagesPanel({ messages, conversations, me, activeThread, setActiveThread, onClose, onSend, onMarkRead, onOpenProfile, onUploadMedia, onTyping, onCreateGroup, supabase }) {
   useEffect_o(() => {
     const onKey = (e) => { if (e.key === 'Escape') {
       if (activeThread) setActiveThread(null);
@@ -1258,46 +1339,32 @@ function MessagesPanel({ messages, me, activeThread, setActiveThread, onClose, o
     return () => window.removeEventListener('keydown', onKey);
   }, [activeThread, onClose, setActiveThread]);
 
-  // Group messages by conversation partner
+  // Build per-conversation summary: messages, unread count, last activity.
   const threads = useMemo_o(() => {
     if (!me?.id) return [];
-    const byPartner = new Map();
-    messages.forEach(m => {
-      const partnerId = m.sender_id === me.id ? m.recipient_id : m.sender_id;
-      const partnerProfile = m.sender_id === me.id ? m.recipient : m.sender;
-      if (!partnerProfile) return;
-      let entry = byPartner.get(partnerId);
-      if (!entry) {
-        entry = { partner: partnerProfile, messages: [], unread: 0, lastAt: null };
-        byPartner.set(partnerId, entry);
-      }
-      entry.messages.push(m);
-      if (m.recipient_id === me.id && !m.read_at) entry.unread += 1;
-      const t = new Date(m.created_at).getTime();
-      if (entry.lastAt == null || t > entry.lastAt) entry.lastAt = t;
+    const byConv = new Map();
+    conversations.forEach(c => {
+      byConv.set(c.id, { conv: c, messages: [], unread: 0, lastAt: c.last_message_at ? new Date(c.last_message_at).getTime() : 0 });
     });
-    return Array.from(byPartner.values()).sort((a, b) => b.lastAt - a.lastAt);
-  }, [messages, me?.id]);
+    messages.forEach(m => {
+      const entry = byConv.get(m.conversation_id);
+      if (!entry) return;
+      entry.messages.push(m);
+      const t = new Date(m.created_at).getTime();
+      if (t > entry.lastAt) entry.lastAt = t;
+    });
+    // Compute unread from my last_read_at on conversation_members
+    byConv.forEach((entry) => {
+      const myMembership = entry.conv.members.find(mm => mm.user_id === me.id);
+      const myLastRead = myMembership?.last_read_at ? new Date(myMembership.last_read_at).getTime() : 0;
+      entry.unread = entry.messages.filter(m => m.sender_id !== me.id && new Date(m.created_at).getTime() > myLastRead).length;
+    });
+    return Array.from(byConv.values()).sort((a, b) => b.lastAt - a.lastAt);
+  }, [messages, conversations, me?.id]);
 
   const activeThreadData = useMemo_o(
-    () => activeThread ? threads.find(t => t.partner.id === activeThread) : null,
+    () => activeThread ? threads.find(t => t.conv.id === activeThread) : null,
     [threads, activeThread]);
-
-  // If we're targeting a partner without any messages yet, build a virtual thread
-  const virtualThread = useMemo_o(() => {
-    if (activeThread && !activeThreadData) {
-      // partner profile not in messages — fetched separately if needed
-      return { partner: { id: activeThread, name: '', username: '', avatar: '··' }, messages: [], unread: 0, lastAt: 0 };
-    }
-    return null;
-  }, [activeThread, activeThreadData]);
-
-  const thread = activeThreadData || virtualThread;
-
-  // Mark active thread read on open
-  useEffect_o(() => {
-    if (activeThread && onMarkRead) onMarkRead(activeThread);
-  }, [activeThread, messages.length]);
 
   return (
     <div className="ti-overlay ti-msg-overlay" onClick={onClose}>
@@ -1313,89 +1380,238 @@ function MessagesPanel({ messages, me, activeThread, setActiveThread, onClose, o
                 <div className="ti-edit-eyebrow">Inbox</div>
                 <h2 className="ti-edit-title">Direct messages</h2>
               </div>
-              <button className="ti-x ti-notif-x" onClick={onClose} aria-label="close">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7">
-                  <path d="m6 6 12 12M6 18 18 6"/>
-                </svg>
-              </button>
+              <div className="ti-msg-hd-actions">
+                <button className="ti-msg-new-group" onClick={onCreateGroup}>
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.7">
+                    <path d="M12 5v14M5 12h14"/>
+                  </svg>
+                  <span>Group</span>
+                </button>
+                <button className="ti-x ti-notif-x" onClick={onClose} aria-label="close">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7">
+                    <path d="m6 6 12 12M6 18 18 6"/>
+                  </svg>
+                </button>
+              </div>
             </header>
             <div className="ti-msg-list">
               {threads.length === 0 ? (
                 <div className="ti-notif-empty">
                   <div className="ti-empty-mark"><span /><span /><span /><span /></div>
                   <div className="ti-notif-empty-msg">No messages yet.</div>
-                  <div className="ti-notif-empty-sub">Open someone's profile and tap Message to start a chat.</div>
+                  <div className="ti-notif-empty-sub">Open someone's profile and tap Message — or create a group.</div>
                 </div>
-              ) : threads.map(t => (
-                <button key={t.partner.id} className="ti-msg-row"
-                        onPointerDown={(e) => { e.stopPropagation(); setActiveThread(t.partner.id); }}>
-                  <div className={`ti-admin-user-avatar ti-role-ring-${t.partner.role}`}>
-                    {t.partner.avatar_url
-                      ? <img src={t.partner.avatar_url} alt={t.partner.avatar} />
-                      : t.partner.avatar}
-                  </div>
-                  <div className="ti-msg-row-meta">
-                    <div className="ti-msg-row-top">
-                      <span className="ti-msg-row-name">{t.partner.name || '@' + t.partner.username}</span>
-                      <span className="ti-msg-row-time">{relativeTime(new Date(t.lastAt).toISOString())}</span>
+              ) : threads.map(t => {
+                const display = describeConversation(t.conv, me);
+                const last = t.messages[t.messages.length - 1];
+                return (
+                  <button key={t.conv.id} className="ti-msg-row"
+                          onPointerDown={(e) => { e.stopPropagation(); setActiveThread(t.conv.id); }}>
+                    <ConvAvatar conv={t.conv} me={me} />
+                    <div className="ti-msg-row-meta">
+                      <div className="ti-msg-row-top">
+                        <span className="ti-msg-row-name">{display.title}</span>
+                        <span className="ti-msg-row-time">{relativeTime(new Date(t.lastAt).toISOString())}</span>
+                      </div>
+                      <div className="ti-msg-row-bot">
+                        <span className="ti-msg-row-preview">
+                          {last
+                            ? (last.sender_id === me.id ? 'You: ' : (t.conv.type === 'group' ? (last.sender?.name || '') + ': ' : ''))
+                              + previewMessage(last)
+                            : <em>No messages yet</em>}
+                        </span>
+                        {t.unread > 0 && <span className="ti-msg-row-unread">{t.unread}</span>}
+                      </div>
                     </div>
-                    <div className="ti-msg-row-bot">
-                      <span className="ti-msg-row-preview">
-                        {t.messages[t.messages.length - 1].sender_id === me.id ? 'You: ' : ''}
-                        {t.messages[t.messages.length - 1].body}
-                      </span>
-                      {t.unread > 0 && <span className="ti-msg-row-unread">{t.unread}</span>}
-                    </div>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                );
+              })}
             </div>
           </>
         ) : (
-          <MessageThread thread={thread} me={me}
+          <MessageThread conv={activeThreadData?.conv} threadMessages={activeThreadData?.messages || []} me={me}
                          onBack={() => setActiveThread(null)}
                          onClose={onClose}
-                         onSend={(body) => onSend(thread.partner.id, body)}
-                         onOpenProfile={onOpenProfile} />
+                         onSend={(payload) => onSend(activeThread, payload)}
+                         onMarkRead={() => onMarkRead && onMarkRead(activeThread)}
+                         onOpenProfile={onOpenProfile}
+                         onUploadMedia={onUploadMedia}
+                         onTyping={() => onTyping && onTyping(activeThread)}
+                         supabase={supabase} />
         )}
       </div>
     </div>
   );
 }
 
-function MessageThread({ thread, me, onBack, onClose, onSend, onOpenProfile }) {
+function describeConversation(conv, me) {
+  if (!conv) return { title: '' };
+  if (conv.type === 'group' && conv.name) return { title: conv.name };
+  const others = (conv.members || []).filter(m => m.user_id !== me?.id).map(m => m.profile).filter(Boolean);
+  if (others.length === 0) return { title: 'Just you' };
+  if (others.length === 1) return { title: others[0].name || '@' + others[0].username };
+  if (others.length === 2) return { title: `${others[0].name || others[0].username} & ${others[1].name || others[1].username}` };
+  return { title: `${others[0].name || others[0].username} + ${others.length - 1} others` };
+}
+
+function previewMessage(m) {
+  if (!m) return '';
+  if (m.kind === 'text' || !m.kind) return m.body || '';
+  if (m.kind === 'photo') return '📷 Photo' + (m.caption ? ' · ' + m.caption : '');
+  if (m.kind === 'video') return '🎞️ Video' + (m.caption ? ' · ' + m.caption : '');
+  if (m.kind === 'audio') return '🎙️ Audio' + (m.caption ? ' · ' + m.caption : '');
+  if (m.kind === 'link')  return '🔗 ' + (m.link?.title || m.link?.url || 'Link');
+  if (m.kind === 'poll')  return '📊 Poll · ' + (m.body || '');
+  if (m.kind === 'chart') return '📈 Chart · ' + (m.chart?.label || '');
+  if (m.kind === 'grid')  return '🗂️ Grid · ' + (m.caption || '');
+  return m.body || '';
+}
+
+function ConvAvatar({ conv, me }) {
+  const others = (conv.members || []).filter(m => m.user_id !== me?.id).map(m => m.profile).filter(Boolean);
+  if (conv.type === 'group' && others.length >= 2) {
+    const a = others[0], b = others[1];
+    return (
+      <div className="ti-conv-avatar ti-conv-avatar-group">
+        <div className={`ti-admin-user-avatar ti-role-ring-${a.role}`}>
+          {a.avatar_url ? <img src={a.avatar_url} alt={a.avatar} /> : a.avatar}
+        </div>
+        <div className={`ti-admin-user-avatar ti-role-ring-${b.role}`}>
+          {b.avatar_url ? <img src={b.avatar_url} alt={b.avatar} /> : b.avatar}
+        </div>
+      </div>
+    );
+  }
+  const partner = others[0] || { avatar: '??', role: 'user' };
+  return (
+    <div className={`ti-admin-user-avatar ti-role-ring-${partner.role}`}>
+      {partner.avatar_url ? <img src={partner.avatar_url} alt={partner.avatar} /> : partner.avatar}
+    </div>
+  );
+}
+
+function MessageThread({ conv, threadMessages, me, onBack, onClose, onSend, onMarkRead, onOpenProfile, onUploadMedia, onTyping, supabase }) {
   const [draft, setDraft] = useState_o('');
   const [busy, setBusy] = useState_o(false);
+  const [uploadingMedia, setUploadingMedia] = useState_o(false);
+  const [pendingMedia, setPendingMedia] = useState_o(null); // { url, kind, mime }
+  const [error, setError] = useState_o(null);
+  const [typingPeers, setTypingPeers] = useState_o([]); // [{ user_id, name, avatar, until }]
   const scrollRef = useRef_o(null);
+  const fileRef = useRef_o(null);
+  const lastTypingSent = useRef_o(0);
+
+  const display = describeConversation(conv, me);
+  const others = useMemo_o(
+    () => (conv?.members || []).filter(m => m.user_id !== me?.id).map(m => m.profile).filter(Boolean),
+    [conv?.members, me?.id]);
 
   // Auto-scroll to bottom on new messages
   useEffect_o(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [thread.messages.length]);
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [threadMessages.length, typingPeers.length]);
 
-  const submit = async (e) => {
-    e?.preventDefault();
-    const body = draft.trim();
-    if (!body) return;
-    setBusy(true);
-    setDraft('');
-    const r = await onSend(body);
-    setBusy(false);
-    if (!r?.ok) {
-      // restore draft on failure
-      setDraft(body);
+  // Mark read on open + when new messages arrive while open
+  useEffect_o(() => { onMarkRead && onMarkRead(); }, [conv?.id, threadMessages.length]);
+
+  // Subscribe to typing broadcast for this conversation
+  useEffect_o(() => {
+    if (!supabase || !conv?.id) return;
+    const ch = supabase.channel('typing:' + conv.id, { config: { broadcast: { self: false } } });
+    ch.on('broadcast', { event: 'typing' }, ({ payload }) => {
+      if (!payload || payload.user_id === me?.id) return;
+      const until = Date.now() + 4000;
+      setTypingPeers(prev => {
+        const without = prev.filter(p => p.user_id !== payload.user_id);
+        return [...without, { ...payload, until }];
+      });
+    });
+    ch.subscribe();
+    // GC stale typers every second
+    const gc = setInterval(() => {
+      setTypingPeers(prev => {
+        const fresh = prev.filter(p => p.until > Date.now());
+        return fresh.length === prev.length ? prev : fresh;
+      });
+    }, 1000);
+    return () => { clearInterval(gc); supabase.removeChannel(ch); };
+  }, [supabase, conv?.id, me?.id]);
+
+  const handleDraftChange = (v) => {
+    setDraft(v);
+    // throttle typing pings to once per 1.5s
+    const now = Date.now();
+    if (onTyping && now - lastTypingSent.current > 1500) {
+      lastTypingSent.current = now;
+      onTyping();
     }
   };
 
-  // Group consecutive messages from same sender for tighter rendering
+  const onPickFile = () => fileRef.current?.click();
+  const onFileChosen = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !onUploadMedia) return;
+    setError(null);
+    setUploadingMedia(true);
+    const r = await onUploadMedia(file);
+    setUploadingMedia(false);
+    if (!r.ok) { setError(r.error); return; }
+    setPendingMedia(r);
+  };
+
+  const submit = async (e) => {
+    e?.preventDefault();
+    setError(null);
+    const body = draft.trim();
+    if (!body && !pendingMedia) return;
+    setBusy(true);
+    const payload = pendingMedia
+      ? {
+          kind: pendingMedia.kind === 'image' ? 'photo'
+              : pendingMedia.kind === 'video' ? 'video'
+              : 'audio',
+          caption: body || null,
+          media: { url: pendingMedia.url, mime: pendingMedia.mime },
+        }
+      : { kind: 'text', body };
+    const localDraft = draft;
+    const localMedia = pendingMedia;
+    setDraft('');
+    setPendingMedia(null);
+    const r = await onSend(payload);
+    setBusy(false);
+    if (!r?.ok) {
+      setDraft(localDraft);
+      setPendingMedia(localMedia);
+      setError(r?.error || 'Send failed.');
+    }
+  };
+
+  // Compute the latest read-by-others timestamp for read receipts
+  const lastSeenAt = useMemo_o(() => {
+    if (!conv) return 0;
+    const otherReads = (conv.members || [])
+      .filter(m => m.user_id !== me?.id && m.last_read_at)
+      .map(m => new Date(m.last_read_at).getTime());
+    return otherReads.length ? Math.max(...otherReads) : 0;
+  }, [conv?.members, me?.id]);
+
+  // Group consecutive messages from same sender
   const groups = [];
-  thread.messages.forEach(m => {
+  threadMessages.forEach(m => {
     const last = groups[groups.length - 1];
     if (last && last[0].sender_id === m.sender_id) last.push(m);
     else groups.push([m]);
   });
+
+  const lastMineIdx = (() => {
+    for (let i = threadMessages.length - 1; i >= 0; i--) {
+      if (threadMessages[i].sender_id === me?.id) return i;
+    }
+    return -1;
+  })();
+  const lastMineSeen = lastMineIdx >= 0 && lastSeenAt >= new Date(threadMessages[lastMineIdx].created_at).getTime();
 
   return (
     <div className="ti-msg-thread">
@@ -1405,21 +1621,24 @@ function MessageThread({ thread, me, onBack, onClose, onSend, onOpenProfile }) {
             <path d="m15 6-6 6 6 6"/>
           </svg>
         </button>
-        <button className="ti-msg-thread-partner"
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  if (onOpenProfile) { onClose && onClose(); onOpenProfile(thread.partner.id); }
-                }}>
-          <div className={`ti-admin-user-avatar ti-role-ring-${thread.partner.role}`}>
-            {thread.partner.avatar_url
-              ? <img src={thread.partner.avatar_url} alt={thread.partner.avatar} />
-              : (thread.partner.avatar || '··')}
-          </div>
+        <div className="ti-msg-thread-partner"
+             onPointerDown={(e) => {
+               e.stopPropagation();
+               if (conv?.type === 'dm' && others[0] && onOpenProfile) {
+                 onClose && onClose();
+                 onOpenProfile(others[0].id);
+               }
+             }}>
+          <ConvAvatar conv={conv} me={me} />
           <div className="ti-msg-thread-info">
-            <div className="ti-msg-thread-name">{thread.partner.name || '@' + thread.partner.username}</div>
-            <div className="ti-msg-thread-handle">@{thread.partner.username}</div>
+            <div className="ti-msg-thread-name">{display.title}</div>
+            <div className="ti-msg-thread-handle">
+              {conv?.type === 'group'
+                ? `${conv.members?.length || 0} member${conv.members?.length === 1 ? '' : 's'}`
+                : (others[0] ? '@' + others[0].username : '')}
+            </div>
           </div>
-        </button>
+        </div>
         <button className="ti-x ti-notif-x" onClick={onClose} aria-label="close">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7">
             <path d="m6 6 12 12M6 18 18 6"/>
@@ -1430,45 +1649,262 @@ function MessageThread({ thread, me, onBack, onClose, onSend, onOpenProfile }) {
       <div className="ti-msg-thread-scroll" ref={scrollRef}>
         {groups.length === 0 && (
           <div className="ti-msg-thread-empty">
-            Send the first message to <b>@{thread.partner.username}</b>.
+            {conv?.type === 'group'
+              ? <>Say hi to the group.</>
+              : <>Send the first message to <b>{others[0] ? '@' + others[0].username : 'this user'}</b>.</>}
           </div>
         )}
         {groups.map((group, gi) => {
           const fromMe = group[0].sender_id === me.id;
-          const partnerProfile = fromMe ? null : (group[0].sender || thread.partner);
+          const senderProfile = group[0].sender;
           return (
             <div key={gi} className={`ti-msg-group${fromMe ? ' is-mine' : ''}`}>
               {!fromMe && (
-                <div className={`ti-admin-user-avatar ti-role-ring-${partnerProfile?.role}`}>
-                  {partnerProfile?.avatar_url
-                    ? <img src={partnerProfile.avatar_url} alt={partnerProfile.avatar} />
-                    : (partnerProfile?.avatar || '··')}
+                <div className={`ti-admin-user-avatar ti-role-ring-${senderProfile?.role}`}>
+                  {senderProfile?.avatar_url
+                    ? <img src={senderProfile.avatar_url} alt={senderProfile.avatar} />
+                    : (senderProfile?.avatar || '··')}
                 </div>
               )}
               <div className="ti-msg-group-bubbles">
-                {group.map(m => (
-                  <div key={m.id} className="ti-msg-bubble" title={new Date(m.created_at).toLocaleString()}>
-                    {m.body}
-                  </div>
-                ))}
+                {!fromMe && conv?.type === 'group' && senderProfile && (
+                  <div className="ti-msg-group-name">{senderProfile.name || '@' + senderProfile.username}</div>
+                )}
+                {group.map(m => <MessageBubble key={m.id} m={m} fromMe={fromMe} />)}
                 <div className="ti-msg-group-time">{relativeTime(group[group.length - 1].created_at)}</div>
               </div>
             </div>
           );
         })}
+        {typingPeers.length > 0 && (
+          <div className="ti-msg-typing">
+            <span className="ti-msg-typing-dots"><span /><span /><span /></span>
+            <span>{typingPeers.map(p => p.name || 'Someone').join(', ')} {typingPeers.length === 1 ? 'is' : 'are'} typing…</span>
+          </div>
+        )}
+        {lastMineSeen && lastMineIdx === threadMessages.length - 1 && (
+          <div className="ti-msg-seen">Seen</div>
+        )}
       </div>
 
+      {pendingMedia && (
+        <div className="ti-msg-pending">
+          <div className="ti-msg-pending-preview">
+            {pendingMedia.kind === 'image'
+              ? <img src={pendingMedia.url} alt="" />
+              : pendingMedia.kind === 'video'
+              ? <video src={pendingMedia.url} muted />
+              : <span>🎙️ Audio attached</span>}
+          </div>
+          <button type="button" className="ti-msg-pending-x" onClick={() => setPendingMedia(null)} aria-label="remove attachment">×</button>
+        </div>
+      )}
+      {error && <div className="ti-auth-err ti-msg-err">{error}</div>}
+
       <form className="ti-msg-input" onSubmit={submit}>
+        <input ref={fileRef} type="file"
+               accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime,audio/mpeg,audio/wav,audio/ogg,audio/webm"
+               style={{ display: 'none' }}
+               onChange={onFileChosen} />
+        <button type="button" className="ti-msg-attach" onClick={onPickFile}
+                disabled={uploadingMedia} aria-label="Attach media">
+          {uploadingMedia ? '…' : (
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.6">
+              <path d="M16 8 8.5 15.5a2.5 2.5 0 0 0 3.5 3.5L20 11a4.5 4.5 0 0 0-6.4-6.3L5 13a6.5 6.5 0 0 0 9.2 9.2L21 15"/>
+            </svg>
+          )}
+        </button>
         <input value={draft}
-               onChange={(e) => setDraft(e.target.value)}
-               placeholder={`Message @${thread.partner.username}…`}
+               onChange={(e) => handleDraftChange(e.target.value)}
+               placeholder={pendingMedia ? 'Add a caption (optional)…' : `Message ${display.title}…`}
                maxLength={1000}
                autoFocus />
-        <button type="submit" disabled={busy || !draft.trim()} aria-label="Send message">
+        <button type="submit" disabled={busy || (!draft.trim() && !pendingMedia)} aria-label="Send message">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8">
             <path d="M5 12h14M13 6l6 6-6 6"/>
           </svg>
         </button>
+      </form>
+    </div>
+  );
+}
+
+function MessageBubble({ m, fromMe }) {
+  const kind = m.kind || 'text';
+  if (kind === 'photo' && m.media?.url) {
+    return (
+      <div className="ti-msg-bubble ti-msg-bubble-media">
+        <img src={m.media.url} alt={m.caption || ''} />
+        {m.caption && <div className="ti-msg-bubble-caption">{m.caption}</div>}
+      </div>
+    );
+  }
+  if (kind === 'video' && m.media?.url) {
+    return (
+      <div className="ti-msg-bubble ti-msg-bubble-media">
+        <video src={m.media.url} controls playsInline preload="metadata" />
+        {m.caption && <div className="ti-msg-bubble-caption">{m.caption}</div>}
+      </div>
+    );
+  }
+  if (kind === 'audio' && m.media?.url) {
+    return (
+      <div className="ti-msg-bubble ti-msg-bubble-audio">
+        <audio src={m.media.url} controls preload="metadata" />
+        {m.caption && <div className="ti-msg-bubble-caption">{m.caption}</div>}
+      </div>
+    );
+  }
+  if (kind === 'link' && m.link) {
+    return (
+      <a className="ti-msg-bubble ti-msg-bubble-link" href={m.link.url} target="_blank" rel="noopener noreferrer">
+        <div className="ti-linkcard-domain">{m.link.domain || m.link.url}</div>
+        <div className="ti-linkcard-title">{m.link.title || m.link.url}</div>
+        {m.link.excerpt && <div className="ti-linkcard-excerpt">{m.link.excerpt}</div>}
+      </a>
+    );
+  }
+  return (
+    <div className="ti-msg-bubble" title={new Date(m.created_at).toLocaleString()}>
+      {m.body || ''}
+    </div>
+  );
+}
+
+function CreateConversationModal({ me, followingIds, onCreate, onClose }) {
+  const supabase = window.supabaseClient;
+  const [name, setName] = useState_o('');
+  const [q, setQ] = useState_o('');
+  const [users, setUsers] = useState_o([]);
+  const [picked, setPicked] = useState_o(new Set());
+  const [busy, setBusy] = useState_o(false);
+  const [error, setError] = useState_o(null);
+
+  useEffect_o(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  // initial: load people I follow as default suggestions
+  useEffect_o(() => {
+    if (!supabase || !me?.id) return;
+    let mounted = true;
+    const load = async () => {
+      const ids = Array.from(followingIds || []);
+      if (ids.length === 0) { setUsers([]); return; }
+      const { data } = await supabase.from('profiles')
+        .select('id, username, name, avatar, avatar_url, role')
+        .in('id', ids).limit(30);
+      if (mounted) setUsers(data || []);
+    };
+    load();
+    return () => { mounted = false; };
+  }, [supabase, me?.id]);
+
+  // search profiles when query is non-empty
+  useEffect_o(() => {
+    if (!supabase) return;
+    const cleaned = q.trim().toLowerCase();
+    if (!cleaned) return; // keep follower list when empty
+    let mounted = true;
+    const t = setTimeout(async () => {
+      const { data } = await supabase.from('profiles')
+        .select('id, username, name, avatar, avatar_url, role')
+        .or(`username.ilike.%${cleaned}%,name.ilike.%${cleaned}%`)
+        .neq('id', me?.id || '')
+        .limit(20);
+      if (mounted) setUsers(data || []);
+    }, 180);
+    return () => { mounted = false; clearTimeout(t); };
+  }, [q, supabase, me?.id]);
+
+  const togglePicked = (id) => {
+    setPicked(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const submit = async (e) => {
+    e?.preventDefault();
+    setError(null);
+    if (picked.size < 1) { setError('Pick at least one person.'); return; }
+    setBusy(true);
+    const r = await onCreate({ name: picked.size > 1 ? name : '', memberIds: Array.from(picked) });
+    setBusy(false);
+    if (!r?.ok) setError(r?.error || 'Could not create.');
+  };
+
+  return (
+    <div className="ti-overlay ti-edit-overlay" onClick={onClose}>
+      <div className="ti-overlay-bg" />
+      <form className="ti-edit-modal" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
+        <div className="ti-gloss" /><div className="ti-gloss-edge" />
+        <header className="ti-edit-hd">
+          <div>
+            <div className="ti-edit-eyebrow">{picked.size > 1 ? 'New group' : 'New conversation'}</div>
+            <h2 className="ti-edit-title">Pick {picked.size > 1 ? 'members' : 'someone to message'}</h2>
+          </div>
+          <button type="button" className="ti-x" onClick={onClose} aria-label="close">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7">
+              <path d="m6 6 12 12M6 18 18 6"/>
+            </svg>
+          </button>
+        </header>
+
+        {picked.size > 1 && (
+          <label className="ti-edit-field">
+            <span className="ti-edit-lbl">Group name (optional)</span>
+            <input className="ti-auth-input" maxLength={60}
+                   value={name} onChange={(e) => setName(e.target.value)}
+                   placeholder="e.g. Design crew" />
+          </label>
+        )}
+
+        <label className="ti-edit-field">
+          <span className="ti-edit-lbl">Search people</span>
+          <input className="ti-auth-input"
+                 value={q} onChange={(e) => setQ(e.target.value)}
+                 placeholder="@username or name" />
+        </label>
+
+        <div className="ti-msg-picker-list">
+          {users.length === 0 && <div className="ti-search-empty">No matches.</div>}
+          {users.map(u => {
+            const isPicked = picked.has(u.id);
+            return (
+              <button type="button" key={u.id}
+                      className={`ti-msg-picker-row${isPicked ? ' is-picked' : ''}`}
+                      onClick={() => togglePicked(u.id)}>
+                <div className={`ti-admin-user-avatar ti-role-ring-${u.role}`}>
+                  {u.avatar_url ? <img src={u.avatar_url} alt={u.avatar} /> : u.avatar}
+                </div>
+                <div className="ti-admin-user-meta">
+                  <div className="ti-admin-user-name">{u.name}</div>
+                  <div className="ti-admin-user-handle">@{u.username}</div>
+                </div>
+                <span className={`ti-msg-picker-check${isPicked ? ' is-on' : ''}`}>
+                  {isPicked && (
+                    <svg viewBox="0 0 12 12" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="m2 6 3 3 5-6"/>
+                    </svg>
+                  )}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {error && <div className="ti-auth-err">{error}</div>}
+
+        <footer className="ti-edit-ft">
+          <button type="button" className="ti-btn-ghost" onClick={onClose}>Cancel</button>
+          <button type="submit" className="ti-auth-submit ti-edit-save" disabled={busy || picked.size < 1}>
+            {busy ? 'Creating…' : picked.size > 1 ? 'Create group' : 'Start chat'}
+          </button>
+        </footer>
       </form>
     </div>
   );
@@ -1493,3 +1929,4 @@ window.EditProfileModal = EditProfileModal;
 window.FollowListModal = FollowListModal;
 window.MobileCommentSheet = MobileCommentSheet;
 window.MessagesPanel = MessagesPanel;
+window.CreateConversationModal = CreateConversationModal;

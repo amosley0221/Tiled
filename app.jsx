@@ -128,9 +128,12 @@ function TiledApp({ tweaks }) {
   const [followListOpen, setFollowListOpen] = useState(null);   // 'followers' | 'following' | null
   const [pendingDelete, setPendingDelete] = useState({});       // { [tileId]: expiresAt }
   const deleteTimers = useRef({});
-  const [messages, setMessages] = useState([]);                 // all messages I'm party to
+  const [messages, setMessages] = useState([]);                 // all messages I'm party to (joined w/ sender profile)
+  const [conversations, setConversations] = useState([]);       // [{id, type, name, last_message_at, members: [{user_id, last_read_at, profile:{...}}]}]
   const [messagesOpen, setMessagesOpen] = useState(false);
-  const [activeThread, setActiveThread] = useState(null);       // partner user id (string) | null
+  const [activeThread, setActiveThread] = useState(null);       // conversation id (string) | null
+  const [createConvOpen, setCreateConvOpen] = useState(false);
+  const [typingByConv, setTypingByConv] = useState({});         // { [conversationId]: { [userId]: { name, avatar, until } } }
   const [viewingProfileId, setViewingProfileId] = useState(null); // null = my profile (or off-profile)
   const [viewedProfile, setViewedProfile] = useState(null);       // profile_stats row when viewing another user
   const [viewedProfileLoading, setViewedProfileLoading] = useState(false);
@@ -164,7 +167,7 @@ function TiledApp({ tweaks }) {
   const loadFeed = async ({ silent = false } = {}) => {
     if (!supabase || !ME?.id) return;
     if (!silent) setFeedLoading(true);
-    const [feedRes, commentsRes, likesRes, savesRes, dismRes, votesRes, notifRes, statsRes, followingRes, followersRes, messagesRes] = await Promise.all([
+    const [feedRes, commentsRes, likesRes, savesRes, dismRes, votesRes, notifRes, statsRes, followingRes, followersRes, messagesRes, convsRes, membersRes] = await Promise.all([
       supabase.from('tile_feed').select('*').order('created_at', { ascending: false }),
       supabase.from('comments').select('*, author:profiles!comments_author_id_fkey(username,avatar,avatar_url)').order('created_at', { ascending: true }),
       supabase.from('likes').select('tile_id').eq('user_id', ME.id),
@@ -179,11 +182,16 @@ function TiledApp({ tweaks }) {
       supabase.from('profile_stats').select('follower_count, following_count').eq('id', ME.id).maybeSingle(),
       supabase.from('follows').select('followee_id').eq('follower_id', ME.id),
       supabase.from('follows').select('follower_id').eq('followee_id', ME.id),
+      // RLS scopes both queries to conversations I'm a member of.
       supabase.from('messages')
-        .select('*, sender:profiles!messages_sender_id_fkey(id,username,name,avatar,avatar_url,role), recipient:profiles!messages_recipient_id_fkey(id,username,name,avatar,avatar_url,role)')
-        .or(`sender_id.eq.${ME.id},recipient_id.eq.${ME.id}`)
+        .select('*, sender:profiles!messages_sender_id_fkey(id,username,name,avatar,avatar_url,role)')
         .order('created_at', { ascending: true })
-        .limit(500),
+        .limit(1000),
+      supabase.from('conversations')
+        .select('*')
+        .order('last_message_at', { ascending: false }),
+      supabase.from('conversation_members')
+        .select('conversation_id, user_id, last_read_at, joined_at, profile:profiles!conversation_members_user_id_fkey(id,username,name,avatar,avatar_url,role)'),
     ]);
 
     if (feedRes.error)     console.warn('[tiled] feed load failed:',     feedRes.error.message);
@@ -202,6 +210,19 @@ function TiledApp({ tweaks }) {
     setFollowerIds(new Set((followersRes.data || []).map(r => r.follower_id)));
     setMessages(messagesRes.data || []);
     if (messagesRes.error) console.warn('[tiled] messages load failed:', messagesRes.error.message);
+
+    // Group members by conversation_id and merge into conversation objects
+    const membersByConv = {};
+    (membersRes.data || []).forEach(m => {
+      (membersByConv[m.conversation_id] = membersByConv[m.conversation_id] || []).push(m);
+    });
+    const enrichedConvs = (convsRes.data || []).map(c => ({
+      ...c,
+      members: membersByConv[c.id] || [],
+    }));
+    setConversations(enrichedConvs);
+    if (convsRes.error) console.warn('[tiled] conversations load failed:', convsRes.error.message);
+    if (membersRes.error) console.warn('[tiled] members load failed:', membersRes.error.message);
 
     const likedSet = new Set((likesRes.data || []).map(r => r.tile_id));
     const savedSet = new Set((savesRes.data || []).map(r => r.tile_id));
@@ -292,18 +313,17 @@ function TiledApp({ tweaks }) {
       })
       .subscribe();
 
-    // ── messages: prepend new ones, update on read receipts
+    // ── messages: RLS scopes incoming events to conversations I'm in
     const messagesChannel = supabase
       .channel('rt-messages')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, async (payload) => {
         if (payload.eventType === 'INSERT') {
           const row = payload.new;
           if (!row) return;
-          if (row.sender_id !== ME.id && row.recipient_id !== ME.id) return;
-          // fetch with profile joins so the inbox can render avatars
+          // fetch with sender profile join
           const { data } = await supabase
             .from('messages')
-            .select('*, sender:profiles!messages_sender_id_fkey(id,username,name,avatar,avatar_url,role), recipient:profiles!messages_recipient_id_fkey(id,username,name,avatar,avatar_url,role)')
+            .select('*, sender:profiles!messages_sender_id_fkey(id,username,name,avatar,avatar_url,role)')
             .eq('id', row.id)
             .maybeSingle();
           if (!data) return;
@@ -311,12 +331,54 @@ function TiledApp({ tweaks }) {
         } else if (payload.eventType === 'UPDATE') {
           const row = payload.new;
           if (!row) return;
-          setMessages(prev => prev.map(m => m.id === row.id ? { ...m, read_at: row.read_at } : m));
+          setMessages(prev => prev.map(m => m.id === row.id ? { ...m, ...row } : m));
         } else if (payload.eventType === 'DELETE') {
           const row = payload.old;
           if (!row) return;
           setMessages(prev => prev.filter(m => m.id !== row.id));
         }
+      })
+      .subscribe();
+
+    // ── conversations + members: keep the list fresh when added to a group,
+    // when someone reads a thread, or when a conversation's last_message_at moves
+    const convsChannel = supabase
+      .channel('rt-conversations')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, async (payload) => {
+        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+          const row = payload.new;
+          if (!row) return;
+          setConversations(prev => {
+            const existing = prev.find(c => c.id === row.id);
+            if (existing) {
+              return prev.map(c => c.id === row.id ? { ...c, ...row } : c)
+                .sort((a, b) => new Date(b.last_message_at) - new Date(a.last_message_at));
+            }
+            // new conversation — fetch full row + members
+            return prev; // will be backfilled by the membership subscription below
+          });
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversation_members' }, async (payload) => {
+        const row = payload.new || payload.old;
+        if (!row) return;
+        // refetch the affected conversation with its members
+        const [{ data: conv }, { data: members }] = await Promise.all([
+          supabase.from('conversations').select('*').eq('id', row.conversation_id).maybeSingle(),
+          supabase.from('conversation_members')
+            .select('conversation_id, user_id, last_read_at, joined_at, profile:profiles!conversation_members_user_id_fkey(id,username,name,avatar,avatar_url,role)')
+            .eq('conversation_id', row.conversation_id),
+        ]);
+        if (!conv) {
+          setConversations(prev => prev.filter(c => c.id !== row.conversation_id));
+          return;
+        }
+        setConversations(prev => {
+          const updated = { ...conv, members: members || [] };
+          const idx = prev.findIndex(c => c.id === conv.id);
+          const next = idx >= 0 ? prev.map((c, i) => i === idx ? updated : c) : [...prev, updated];
+          return next.sort((a, b) => new Date(b.last_message_at) - new Date(a.last_message_at));
+        });
       })
       .subscribe();
 
@@ -347,6 +409,7 @@ function TiledApp({ tweaks }) {
       supabase.removeChannel(notifChannel);
       supabase.removeChannel(followsChannel);
       supabase.removeChannel(messagesChannel);
+      supabase.removeChannel(convsChannel);
     };
   }, [ME?.id, viewingProfileId]);
 
@@ -634,34 +697,126 @@ function TiledApp({ tweaks }) {
     setMessagesOpen(true);
     setActiveThread(null);
   };
-  const openThreadWith = (partnerId) => {
+
+  // Find an existing 1:1 conversation with this user or create one.
+  const findOrCreateDmConversation = async (partnerId) => {
+    if (!supabase || !ME?.id || !partnerId || partnerId === ME.id) return null;
+    // Search local cache first
+    const existing = conversations.find(c =>
+      c.type === 'dm'
+      && c.members.length === 2
+      && c.members.some(m => m.user_id === ME.id)
+      && c.members.some(m => m.user_id === partnerId)
+    );
+    if (existing) return existing.id;
+    // Create
+    const { data: conv, error } = await supabase
+      .from('conversations').insert({ type: 'dm', created_by: ME.id })
+      .select('*').single();
+    if (error) { console.warn('[tiled] create dm conv:', error.message); return null; }
+    const { error: mErr } = await supabase.from('conversation_members').insert([
+      { conversation_id: conv.id, user_id: ME.id },
+      { conversation_id: conv.id, user_id: partnerId },
+    ]);
+    if (mErr) { console.warn('[tiled] add dm members:', mErr.message); return null; }
+    // Realtime will fill in the conversation; return the id immediately
+    return conv.id;
+  };
+
+  const openThreadWith = async (partnerId) => {
     if (!partnerId || partnerId === ME?.id) return;
     setMessagesOpen(true);
-    setActiveThread(partnerId);
+    const convId = await findOrCreateDmConversation(partnerId);
+    if (convId) setActiveThread(convId);
   };
-  const handleSendMessage = async (recipientId, body) => {
+
+  const handleCreateGroup = async ({ name, memberIds }) => {
     if (!supabase || !ME?.id) return { ok: false, error: 'Not signed in.' };
-    const trimmed = (body || '').trim();
-    if (!trimmed) return { ok: false, error: 'Message can\'t be empty.' };
-    if (!recipientId || recipientId === ME.id) return { ok: false, error: 'Bad recipient.' };
+    const ids = (memberIds || []).filter(id => id && id !== ME.id);
+    if (ids.length < 1) return { ok: false, error: 'Pick at least one other member.' };
+    const { data: conv, error } = await supabase
+      .from('conversations').insert({ type: 'group', name: (name || '').trim() || null, created_by: ME.id })
+      .select('*').single();
+    if (error) return { ok: false, error: error.message };
+    const rows = [{ conversation_id: conv.id, user_id: ME.id }, ...ids.map(id => ({ conversation_id: conv.id, user_id: id }))];
+    const { error: mErr } = await supabase.from('conversation_members').insert(rows);
+    if (mErr) return { ok: false, error: mErr.message };
+    setActiveThread(conv.id);
+    return { ok: true, conversationId: conv.id };
+  };
+
+  // Send a tile-format message into a conversation.
+  // payload: { kind, body, caption, media, link, poll, chart, grid }
+  const handleSendMessage = async (conversationId, payload) => {
+    if (!supabase || !ME?.id) return { ok: false, error: 'Not signed in.' };
+    if (!conversationId) return { ok: false, error: 'No conversation.' };
+    const p = payload || {};
+    const kind = p.kind || 'text';
+    const body = (p.body || '').trim() || null;
+    if (kind === 'text' && !body) return { ok: false, error: 'Message can\'t be empty.' };
+    const insertRow = {
+      sender_id: ME.id,
+      conversation_id: conversationId,
+      kind,
+      body: body ? body.slice(0, 5000) : null,
+      caption: p.caption ? String(p.caption).slice(0, 1000) : null,
+      media: p.media || null,
+      link:  p.link  || null,
+      poll:  p.poll  || null,
+      chart: p.chart || null,
+      grid:  p.grid  || null,
+    };
     const { data, error } = await supabase
-      .from('messages')
-      .insert({ sender_id: ME.id, recipient_id: recipientId, body: trimmed.slice(0, 1000) })
-      .select('*, sender:profiles!messages_sender_id_fkey(id,username,name,avatar,avatar_url,role), recipient:profiles!messages_recipient_id_fkey(id,username,name,avatar,avatar_url,role)')
+      .from('messages').insert(insertRow)
+      .select('*, sender:profiles!messages_sender_id_fkey(id,username,name,avatar,avatar_url,role)')
       .single();
     if (error) return { ok: false, error: error.message };
-    // realtime will push the row too — dedupe in setMessages
     setMessages(prev => prev.find(m => m.id === data.id) ? prev : [...prev, data]);
     return { ok: true };
   };
-  const handleMarkThreadRead = async (partnerId) => {
-    if (!supabase || !ME?.id || !partnerId) return;
-    const unreadIds = messages
-      .filter(m => m.recipient_id === ME.id && m.sender_id === partnerId && !m.read_at)
-      .map(m => m.id);
-    if (!unreadIds.length) return;
-    setMessages(prev => prev.map(m => unreadIds.includes(m.id) ? { ...m, read_at: new Date().toISOString() } : m));
-    await supabase.from('messages').update({ read_at: new Date().toISOString() }).in('id', unreadIds);
+
+  const handleMarkConvRead = async (conversationId) => {
+    if (!supabase || !ME?.id || !conversationId) return;
+    // optimistic — update last_read_at on my membership locally
+    const now = new Date().toISOString();
+    setConversations(prev => prev.map(c => c.id === conversationId
+      ? { ...c, members: c.members.map(m => m.user_id === ME.id ? { ...m, last_read_at: now } : m) }
+      : c));
+    await supabase.rpc('mark_conversation_read', { p_conversation_id: conversationId });
+  };
+
+  // Typing indicators — broadcast over a per-conversation channel.
+  // We only listen when the user opens the thread (set up in MessageThread).
+  // Helper to send a typing ping.
+  const sendTypingPing = async (conversationId) => {
+    if (!supabase || !ME?.id || !conversationId) return;
+    const ch = supabase.channel('typing:' + conversationId, { config: { broadcast: { self: false } } });
+    await ch.subscribe();
+    ch.send({ type: 'broadcast', event: 'typing', payload: { user_id: ME.id, name: ME.name, avatar: ME.avatar, avatar_url: ME.avatar_url } });
+    // tear down after a short delay so we don't accumulate channels
+    setTimeout(() => supabase.removeChannel(ch), 1500);
+  };
+
+  // ─── Tile media upload (photos/videos/audio attached to tiles or DMs)
+  const handleUploadTileMedia = async (file) => {
+    if (!supabase || !ME?.id) return { ok: false, error: 'Not signed in.' };
+    if (!file) return { ok: false, error: 'No file selected.' };
+    const isImage = /^image\/(png|jpeg|webp|gif)$/.test(file.type);
+    const isVideo = /^video\/(mp4|webm|quicktime)$/.test(file.type);
+    const isAudio = /^audio\/(mpeg|mp3|wav|ogg|webm|m4a|aac)$/.test(file.type);
+    if (!isImage && !isVideo && !isAudio)
+      return { ok: false, error: 'Unsupported file type.' };
+    const max = isVideo ? 25 * 1024 * 1024 : isAudio ? 15 * 1024 * 1024 : 10 * 1024 * 1024;
+    if (file.size > max)
+      return { ok: false, error: `File too large (max ${Math.round(max/1024/1024)} MB).` };
+    const ext = (file.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin';
+    const path = `${ME.id}/${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+    const { error: upErr } = await supabase.storage
+      .from('tile-media')
+      .upload(path, file, { upsert: false, contentType: file.type, cacheControl: '3600' });
+    if (upErr) return { ok: false, error: upErr.message };
+    const { data } = supabase.storage.from('tile-media').getPublicUrl(path);
+    return { ok: true, url: data.publicUrl, kind: isImage ? 'image' : isVideo ? 'video' : 'audio', mime: file.type, size: file.size };
   };
 
   // ─── Avatar upload / clear (Supabase Storage 'avatars' bucket)
@@ -704,18 +859,37 @@ function TiledApp({ tweaks }) {
   };
 
   // ─── Edit profile
-  const handleSaveProfile = async ({ name, avatar, bio }) => {
+  const handleSaveProfile = async ({ name, avatar, bio, username }) => {
     if (!supabase || !ME?.id) return { ok: false, error: 'Not signed in.' };
     const cleanAvatar = (avatar || '').slice(0, 4).toUpperCase();
     const cleanName = (name || '').trim().slice(0, 60);
     const cleanBio = (bio || '').trim().slice(0, 200);
+    const cleanUsername = (username || '').trim().toLowerCase();
     if (!cleanName) return { ok: false, error: 'Name is required.' };
     if (!cleanAvatar) return { ok: false, error: 'Avatar is required (1–4 letters).' };
+    if (!cleanUsername) return { ok: false, error: 'Username is required.' };
+    if (!/^[a-z0-9_.\-]{3,24}$/.test(cleanUsername))
+      return { ok: false, error: 'Username must be 3–24 chars (letters, numbers, ._-).' };
+
+    const update = { name: cleanName, avatar: cleanAvatar, bio: cleanBio };
+    if (cleanUsername !== ME.handle) {
+      // Verify uniqueness before attempting
+      const { data: clash } = await supabase
+        .from('profiles').select('id').eq('username', cleanUsername).maybeSingle();
+      if (clash && clash.id !== ME.id) {
+        return { ok: false, error: 'That username is taken.' };
+      }
+      update.username = cleanUsername;
+    }
+
     const { error } = await supabase
-      .from('profiles')
-      .update({ name: cleanName, avatar: cleanAvatar, bio: cleanBio })
-      .eq('id', ME.id);
-    if (error) return { ok: false, error: error.message };
+      .from('profiles').update(update).eq('id', ME.id);
+    if (error) {
+      // Postgres unique-violation code is 23505
+      if (error.code === '23505' || /duplicate/i.test(error.message))
+        return { ok: false, error: 'That username is taken.' };
+      return { ok: false, error: error.message };
+    }
     if (auth?.refreshProfile) await auth.refreshProfile();
     return { ok: true };
   };
@@ -848,10 +1022,20 @@ function TiledApp({ tweaks }) {
     if (error) console.warn('[tiled] clear notifications failed:', error.message);
   };
 
-  const handlePost = async (kind, body, postTags) => {
+  const handlePost = async (kind, body, postTags, mediaPayload) => {
     if (!supabase || !ME?.id) return;
     const isStructured = kind === 'chart' || kind === 'grid';
     const trimmed = (body || '').trim();
+    // Real uploaded media gets a url; placeholder kinds keep the gradient seed
+    const photoMedia = mediaPayload && mediaPayload.kind === 'image'
+      ? { url: mediaPayload.url, mime: mediaPayload.mime }
+      : { tone: 180, label: 'photo' };
+    const videoMedia = mediaPayload && mediaPayload.kind === 'video'
+      ? { url: mediaPayload.url, mime: mediaPayload.mime }
+      : { tone: 280, label: 'video' };
+    const audioMedia = mediaPayload && mediaPayload.kind === 'audio'
+      ? { url: mediaPayload.url, mime: mediaPayload.mime }
+      : null;
     const tilePayload = {
       author_id: ME.id,
       kind,
@@ -859,8 +1043,9 @@ function TiledApp({ tweaks }) {
       is_private: mode === 'private',
       body: kind === 'text' ? trimmed : null,
       caption: (kind !== 'text' && !isStructured) ? trimmed : null,
-      media: kind === 'photo' ? { tone: 180, label: 'new photo' }
-           : kind === 'video' ? { tone: 280, label: 'new video', duration: '0:18' }
+      media: kind === 'photo' ? photoMedia
+           : kind === 'video' ? videoMedia
+           : kind === 'audio' ? audioMedia
            : null,
       chart: kind === 'chart' ? {
         label: trimmed || 'Untitled chart',
@@ -1100,13 +1285,28 @@ function TiledApp({ tweaks }) {
       )}
 
       {messagesOpen && (
-        <MessagesPanel messages={messages} me={ME}
+        <MessagesPanel messages={messages} conversations={conversations} me={ME}
                        activeThread={activeThread}
                        setActiveThread={setActiveThread}
                        onClose={() => { setMessagesOpen(false); setActiveThread(null); }}
                        onSend={handleSendMessage}
-                       onMarkRead={handleMarkThreadRead}
-                       onOpenProfile={openProfileForUser} />
+                       onMarkRead={handleMarkConvRead}
+                       onOpenProfile={openProfileForUser}
+                       onUploadMedia={handleUploadTileMedia}
+                       onTyping={sendTypingPing}
+                       onCreateGroup={() => setCreateConvOpen(true)}
+                       supabase={supabase} />
+      )}
+
+      {createConvOpen && (
+        <CreateConversationModal me={ME}
+                                 followingIds={followingIds}
+                                 onCreate={async (args) => {
+                                   const r = await handleCreateGroup(args);
+                                   if (r.ok) setCreateConvOpen(false);
+                                   return r;
+                                 }}
+                                 onClose={() => setCreateConvOpen(false)} />
       )}
 
       {editProfileOpen && (
@@ -1130,7 +1330,8 @@ function TiledApp({ tweaks }) {
 
       {composing && (
         <Composer onClose={() => setComposing(false)} onPost={handlePost}
-                  mode={mode} existingTags={allTags.map(([t]) => t)} />
+                  mode={mode} existingTags={allTags.map(([t]) => t)}
+                  onUploadMedia={handleUploadTileMedia} />
       )}
 
       <ModeIndicator mode={mode} view={view} />
