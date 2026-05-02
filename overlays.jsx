@@ -1460,8 +1460,8 @@ function describeConversation(conv, me) {
 
 function previewMessage(m) {
   if (!m) return '';
-  if (m.shared) {
-    const handle = m.shared.author?.handle || 'unknown';
+  if (m.link && m.link._share) {
+    const handle = m.link._share.author?.handle || 'unknown';
     return `↗ Shared @${handle}'s tile`;
   }
   if (m.kind === 'text' || !m.kind) return m.body || '';
@@ -1739,7 +1739,8 @@ function MessageThread({ conv, threadMessages, me, onBack, onClose, onSend, onDe
 
 function MessageBubble({ m, fromMe, onDelete }) {
   const kind = m.kind || 'text';
-  const isShared = !!m.shared;
+  const shareMeta = m.link && m.link._share ? m.link._share : null;
+  const isShared = !!shareMeta;
   let inner;
 
   if (kind === 'photo' && m.media?.url) {
