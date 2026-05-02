@@ -168,16 +168,26 @@ function TiledApp({ tweaks }) {
   // Scroll-to-top helper used by the top-bar nav buttons. On the feed,
   // mandatory scroll-snap with a 64px scroll-padding for the sticky
   // top-bar pulls the page back to the first tile when scrollTop is 0
-  // (the FeedHeader sits above the snap zone). Tag <html> with
-  // ti-no-snap to disable snap for ~400ms while the scroll completes,
-  // then re-enable it so the rest of the feed still snaps tile-by-tile.
+  // (the FeedHeader sits above the snap zone). We tag <html> with
+  // ti-no-snap to disable snap, then keep snap disabled until the user
+  // actually starts scrolling (touchstart / wheel). A naïve timeout
+  // re-enables snap while the user is still at rest at the top, and
+  // mandatory snap yanks them back to the first tile immediately.
   const scrollHomeToTop = () => {
     if (typeof document === 'undefined') return;
     const html = document.documentElement;
     html.classList.add('ti-no-snap');
     if (mainRef.current) mainRef.current.scrollTo({ top: 0, behavior: 'auto' });
     if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'auto' });
-    setTimeout(() => html.classList.remove('ti-no-snap'), 400);
+    const reenable = () => {
+      html.classList.remove('ti-no-snap');
+      window.removeEventListener('touchstart', reenable);
+      window.removeEventListener('wheel', reenable);
+      window.removeEventListener('keydown', reenable);
+    };
+    window.addEventListener('touchstart', reenable, { passive: true, once: true });
+    window.addEventListener('wheel', reenable, { passive: true, once: true });
+    window.addEventListener('keydown', reenable, { once: true });
   };
 
   const accentCSS = useMemo(() => ({
