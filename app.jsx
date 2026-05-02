@@ -117,6 +117,9 @@ function TiledApp({ tweaks }) {
   const [filter, setFilter] = useState('all');
   const [tagFilter, setTagFilter] = useState(null);     // string | null
   const [userFilter, setUserFilter] = useState(null);   // { handle, name, avatar } | null
+  // Social feed source: explicit user choice overrides the auto default,
+  // which picks 'following' once the user is following anyone, else 'discover'.
+  const [feedSourceOverride, setFeedSourceOverride] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifOrigin, setNotifOrigin] = useState(null);
@@ -575,6 +578,8 @@ function TiledApp({ tweaks }) {
     return Object.entries(counts).sort((a, b) => b[1] - a[1]);
   }, [tiles]);
 
+  const feedSource = feedSourceOverride ?? (followingIds.size > 0 ? 'following' : 'discover');
+
   const visibleTiles = useMemo(() => {
     return tiles.filter(tile => {
       // viewing another user's profile → only their public tiles
@@ -597,9 +602,14 @@ function TiledApp({ tweaks }) {
       if (filter !== 'all' && tile.kind !== filter) return false;
       if (tagFilter && !(tile.tags || []).includes(tagFilter)) return false;
       if (userFilter && tile.author.handle !== userFilter.handle) return false;
+      // Social mode: 'following' restricts to followed authors + own tiles;
+      // 'discover' shows everyone (current behavior).
+      if (mode === 'social' && feedSource === 'following'
+          && tile.author.id !== ME.id
+          && !followingIds.has(tile.author.id)) return false;
       return true;
     });
-  }, [tiles, mode, filter, tagFilter, userFilter, view, onProfile, viewingProfileId, ME.handle]);
+  }, [tiles, mode, filter, tagFilter, userFilter, view, onProfile, viewingProfileId, ME.id, ME.handle, feedSource, followingIds]);
 
   // tick at 250ms while there are pending dismissals or deletes — drives
   // the countdown text in UndoSlot
@@ -1481,6 +1491,8 @@ function TiledApp({ tweaks }) {
           <FeedHeader mode={mode} view={view} count={visibleTiles.length}
                       tagFilter={tagFilter} onClearTag={() => setTagFilter(null)}
                       userFilter={userFilter} onClearUser={() => setUserFilter(null)}
+                      feedSource={feedSource} onSetFeedSource={setFeedSourceOverride}
+                      showFeedSource={mode === 'social' && !tagFilter && !userFilter}
                       t={t} />
         )}
 
@@ -1523,6 +1535,8 @@ function TiledApp({ tweaks }) {
               ))}
               {visibleTiles.length === 0 && (
                 <EmptyState view={view} tagFilter={tagFilter} mode={mode}
+                            feedSource={feedSource}
+                            onSwitchToDiscover={() => setFeedSourceOverride('discover')}
                             onCompose={() => setComposing(true)} />
               )}
             </>
@@ -1642,9 +1656,10 @@ function TiledApp({ tweaks }) {
   );
 }
 
-function EmptyState({ view, tagFilter, mode, onCompose }) {
+function EmptyState({ view, tagFilter, mode, feedSource, onSwitchToDiscover, onCompose }) {
   let msg = 'Welcome to Tiled. Post your first tile to get started.';
   let cta = 'Post a tile';
+  let ctaAction = onCompose;
   let showCta = true;
   if (view === 'liked') {
     msg = 'No liked tiles yet. Tap the heart on a tile to add it here.';
@@ -1655,6 +1670,10 @@ function EmptyState({ view, tagFilter, mode, onCompose }) {
   } else if (tagFilter) {
     msg = `No tiles tagged with #${tagFilter}.`;
     showCta = false;
+  } else if (mode === 'social' && feedSource === 'following') {
+    msg = 'Nothing new from people you follow. Switch to Discover to find more voices.';
+    cta = 'Switch to Discover';
+    ctaAction = onSwitchToDiscover;
   } else if (mode === 'pro') {
     msg = 'No professional tiles yet. Post one to get the section going.';
   } else if (mode === 'private') {
@@ -1664,8 +1683,8 @@ function EmptyState({ view, tagFilter, mode, onCompose }) {
     <div className="ti-empty">
       <div className="ti-empty-mark"><span /><span /><span /><span /></div>
       <div className="ti-empty-msg">{msg}</div>
-      {showCta && onCompose && (
-        <button className="ti-empty-cta" onClick={onCompose}>{cta}</button>
+      {showCta && ctaAction && (
+        <button className="ti-empty-cta" onClick={ctaAction}>{cta}</button>
       )}
     </div>
   );

@@ -427,6 +427,14 @@ button {
 }
 .ti-feed-meta .ti-dot { opacity: 0.5; }
 
+.ti-feed-src {
+  margin-top: 14px;
+  align-self: flex-start;
+  width: 240px; max-width: 100%;
+  height: 32px;
+}
+.ti-feed-src .ti-mode-btn { font-size: 12px; }
+
 /* ───── grid ───── */
 .ti-grid {
   display: grid;
