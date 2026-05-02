@@ -1278,7 +1278,10 @@ function TiledApp({ tweaks }) {
                 setView('feed');
                 setTagFilter(null);
                 setUserFilter(null);
+                // Desktop: mainRef is the scroller. Mobile: the document is.
+                // Scroll both to be safe across viewports.
                 if (mainRef.current) mainRef.current.scrollTo({ top: 0, behavior: 'auto' });
+                if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'auto' });
               }}
               onProfile={() => {
                 // Avatar always lands you on your own profile, scrolled to top —
@@ -1289,6 +1292,7 @@ function TiledApp({ tweaks }) {
                 setOnProfile(true);
                 setView('feed');
                 if (mainRef.current) mainRef.current.scrollTo({ top: 0, behavior: 'auto' });
+                if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'auto' });
               }}
               isOnProfile={onProfile}
               onNotifications={handleOpenNotifications}
