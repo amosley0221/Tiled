@@ -747,14 +747,17 @@ function TiledApp({ tweaks }) {
   };
 
   // Send a tile-format message into a conversation.
-  // payload: { kind, body, caption, media, link, poll, chart, grid }
+  // payload: { kind, body, caption, media, link, poll, chart, grid, shared }
   const handleSendMessage = async (conversationId, payload) => {
     if (!supabase || !ME?.id) return { ok: false, error: 'Not signed in.' };
     if (!conversationId) return { ok: false, error: 'No conversation.' };
     const p = payload || {};
     const kind = p.kind || 'text';
     const body = (p.body || '').trim() || null;
-    if (kind === 'text' && !body) return { ok: false, error: 'Message can\'t be empty.' };
+    // Text bubbles need a body; shared tiles can be empty since the tile
+    // card carries the content (author header + caption / media / etc.)
+    if (kind === 'text' && !body && !p.shared)
+      return { ok: false, error: 'Message can\'t be empty.' };
     const insertRow = {
       sender_id: ME.id,
       conversation_id: conversationId,
@@ -766,6 +769,7 @@ function TiledApp({ tweaks }) {
       poll:  p.poll  || null,
       chart: p.chart || null,
       grid:  p.grid  || null,
+      shared: p.shared || null,
     };
     const { data, error } = await supabase
       .from('messages').insert(insertRow)
@@ -776,27 +780,43 @@ function TiledApp({ tweaks }) {
     return { ok: true };
   };
 
-  // Build a DM payload from a tile so a shared tile renders inside the
-  // thread using the existing tile-format message kinds. Author attribution
-  // goes in the caption (or body for text-only kinds) so the recipient
-  // always sees who originally posted it.
+  // Build a DM payload from a tile. Preserves the tile's content (kind,
+  // body, media, etc.) verbatim and stores the original author in `shared`
+  // so the bubble can render as a proper tile card with an author header.
   const tileToMessagePayload = (tile) => {
     if (!tile) return null;
-    const handle = tile.author?.handle || 'unknown';
-    const attribution = `Shared from @${handle}`;
-    if ((tile.kind === 'photo' || tile.kind === 'video' || tile.kind === 'audio') && tile.media?.url) {
+    const shared = {
+      tile_id: tile.id,
+      kind: tile.kind,
+      author: {
+        id: tile.author?.id || null,
+        handle: tile.author?.handle || 'unknown',
+        name: tile.author?.name || null,
+        avatar: tile.author?.avatar || null,
+        avatar_url: tile.author?.avatar_url || null,
+        role: tile.author?.role || null,
+      },
+    };
+    // 'live' tiles can't be reproduced after the fact, so degrade to text.
+    // Everything else round-trips its content fields directly.
+    if (tile.kind === 'live') {
       return {
-        kind: tile.kind,
-        caption: tile.caption ? `${attribution} · ${tile.caption}` : attribution,
-        media: tile.media,
+        kind: 'text',
+        body: tile.caption || `[live tile from @${shared.author.handle}]`,
+        shared,
       };
     }
-    if (tile.kind === 'link' && tile.link?.url) {
-      return { kind: 'link', body: attribution, link: tile.link };
-    }
-    // text / poll / chart / grid / live → degrade to a text snippet
-    const snippet = (tile.body || tile.caption || `[${tile.kind} tile]`).slice(0, 800);
-    return { kind: 'text', body: `${attribution}:\n${snippet}` };
+    return {
+      kind: tile.kind,
+      body: tile.body || null,
+      caption: tile.caption || null,
+      media: tile.media || null,
+      link: tile.link || null,
+      poll: tile.poll || null,
+      chart: tile.chart || null,
+      grid: tile.grid || null,
+      shared,
+    };
   };
 
   // Send the currently-staged tile as a DM into an existing conversation,
