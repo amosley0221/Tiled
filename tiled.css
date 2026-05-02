@@ -467,13 +467,13 @@ button {
      Snap goes on html, with scroll-padding-top reserving the sticky
      topbar height so the snapped tile lands just below it.
      Tiles drop their square aspect ratio and fill the visible area
-     so each one is a meaningful snap point. */
-  /* Mandatory snap belongs only on the main feed. In profile view we
-     want the bio to stay anchored at the top after a scroll-to-top, so
-     scope the snap rule out when <html> is tagged ti-on-profile. The
-     ti-no-snap escape hatch is added briefly during programmatic
-     scroll-to-top so mandatory snap doesn't yank the page back to the
-     nearest tile (the FeedHeader sits above the scroll-padded snap zone). */
+     so each one is a meaningful snap point.
+     .ti-profile is intentionally NOT a snap point: iOS mandatory-snap
+     swallows touch events on snap targets, so buttons inside the profile
+     header (Edit profile, Follow, etc.) fail to receive click events. The
+     profile header is positioned at the top by scrollHomeToTop() instead.
+     ti-no-snap is added briefly during programmatic scroll-to-top so
+     mandatory snap doesn't yank the page back to the first tile. */
   html:not(.ti-no-snap) {
     scroll-snap-type: y mandatory;
     scroll-padding-top: calc(64px + env(safe-area-inset-top));
@@ -485,7 +485,7 @@ button {
     scroll-snap-align: start;
     scroll-snap-stop: always;
   }
-  .ti-feed-hd, .ti-profile {
+  .ti-feed-hd {
     scroll-snap-align: start;
   }
 }
