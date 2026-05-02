@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <meta name="theme-color" content="#050506" />
 <title>Tiled — premium social dashboard</title>
 <link rel="icon" type="image/svg+xml" href="logo.svg" />
@@ -27,6 +27,20 @@
   // RLS policies in the migration are what actually protect the data.
   window.SUPABASE_URL = 'https://htcjwhwhmgbdmspcdziy.supabase.co';
   window.SUPABASE_KEY = 'sb_publishable_0jzxvL142gZW24NFuCMd6w_7ip0qDkv';
+
+  // Block iOS Safari pinch-zoom and double-tap zoom. The viewport meta tag
+  // alone isn't enough — Safari ignores user-scalable=no in a regular tab,
+  // so we suppress the pinch-gesture events directly. Buttons/links still
+  // get their normal taps; only the zoom gesture is killed.
+  document.addEventListener('gesturestart',  e => e.preventDefault());
+  document.addEventListener('gesturechange', e => e.preventDefault());
+  document.addEventListener('gestureend',    e => e.preventDefault());
+  let __lastTouchEnd = 0;
+  document.addEventListener('touchend', e => {
+    const now = Date.now();
+    if (now - __lastTouchEnd <= 320) e.preventDefault();
+    __lastTouchEnd = now;
+  }, { passive: false });
 </script>
 </head>
 <body>
