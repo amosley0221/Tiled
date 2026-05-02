@@ -1822,7 +1822,7 @@ function MessageBubble({ m, fromMe, onDelete }) {
 
   let bubble;
   if (isShared) {
-    const a = m.shared.author || {};
+    const a = shareMeta.author || {};
     bubble = (
       <div className="ti-msg-bubble ti-msg-bubble-tile" title={new Date(m.created_at).toLocaleString()}>
         <div className="ti-msg-tile-hd">
