@@ -2,7 +2,7 @@
 
 const { useState: useState_t, useRef: useRef_t, useEffect: useEffect_t } = React;
 
-function Tile({ tile, comments, dismissing, me, onDismiss, onLike, onSave, onDelete, onShare, onExpand, onOpenComments, onVote, onTag, t }) {
+function Tile({ tile, comments, dismissing, me, onDismiss, onLike, onSave, onDelete, onShare, onExpand, onOpenComments, onVote, onTag, onShowProfile, t }) {
   const [drag, setDrag] = useState_t({ x: 0, dragging: false });
   const [menuOpen, setMenuOpen] = useState_t(false);
   const [menuRect, setMenuRect] = useState_t(null);
@@ -71,7 +71,9 @@ function Tile({ tile, comments, dismissing, me, onDismiss, onLike, onSave, onDel
       )}
 
       <header className="ti-tile-hd">
-        <div className="ti-author">
+        <div className="ti-author ti-no-drag"
+             onClick={() => onShowProfile && onShowProfile(tile.author.id)}
+             onPointerDown={(e) => e.stopPropagation()}>
           <div className="ti-avatar">
             {tile.author.avatar_url
               ? <img src={tile.author.avatar_url} alt={tile.author.avatar} />

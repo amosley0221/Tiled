@@ -354,6 +354,7 @@ button {
   font-family: inherit;
   cursor: pointer;
   white-space: nowrap;
+  touch-action: manipulation;
 }
 .ti-profile-edit:hover { background: rgba(255,255,255,0.08); }
 .ti-profile-toggle-row {
@@ -466,13 +467,13 @@ button {
      Snap goes on html, with scroll-padding-top reserving the sticky
      topbar height so the snapped tile lands just below it.
      Tiles drop their square aspect ratio and fill the visible area
-     so each one is a meaningful snap point. */
-  /* Mandatory snap belongs only on the main feed. In profile view we
-     want the bio to stay anchored at the top after a scroll-to-top, so
-     scope the snap rule out when <html> is tagged ti-on-profile. The
-     ti-no-snap escape hatch is added briefly during programmatic
-     scroll-to-top so mandatory snap doesn't yank the page back to the
-     nearest tile (the FeedHeader sits above the scroll-padded snap zone). */
+     so each one is a meaningful snap point.
+     .ti-profile is intentionally NOT a snap point: iOS mandatory-snap
+     swallows touch events on snap targets, so buttons inside the profile
+     header (Edit profile, Follow, etc.) fail to receive click events. The
+     profile header is positioned at the top by scrollHomeToTop() instead.
+     ti-no-snap is added briefly during programmatic scroll-to-top so
+     mandatory snap doesn't yank the page back to the first tile. */
   html:not(.ti-no-snap) {
     scroll-snap-type: y mandatory;
     scroll-padding-top: calc(64px + env(safe-area-inset-top));
@@ -484,7 +485,7 @@ button {
     scroll-snap-align: start;
     scroll-snap-stop: always;
   }
-  .ti-feed-hd, .ti-profile {
+  .ti-feed-hd {
     scroll-snap-align: start;
   }
 }
@@ -577,7 +578,7 @@ button {
   gap: 8px;
   position: relative; z-index: 2;
 }
-.ti-author { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.ti-author { display: flex; align-items: center; gap: 9px; min-width: 0; cursor: pointer; touch-action: manipulation; }
 .ti-avatar {
   width: 26px; height: 26px;
   border-radius: 50%;
@@ -3177,6 +3178,7 @@ button {
   font-weight: 600;
   letter-spacing: -0.005em;
   cursor: pointer;
+  touch-action: manipulation;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.6);
   flex-shrink: 0;
   transition: transform .12s ease, opacity .15s ease;
@@ -3207,6 +3209,7 @@ button {
   padding: 0;
   cursor: pointer;
   letter-spacing: inherit;
+  touch-action: manipulation;
 }
 .ti-profile-stat-btn:hover {
   color: var(--text);
@@ -3477,11 +3480,30 @@ button {
   grid-template-columns: 36px 1fr 36px;
   align-items: center;
   gap: 10px;
-  padding: 12px 14px;
+  /* Hardcoded 60px top padding so the topbar always clears the iPhone
+     status bar / Dynamic Island in PWA mode. env(safe-area-inset-top)
+     was unreliable inside this fixed/inset:0 container, so we bypass it
+     entirely and just reserve enough space. The bottom 12px keeps the
+     existing visual rhythm. */
+  padding: 60px 14px 12px;
   background: linear-gradient(180deg, rgba(0,0,0,0.95), rgba(0,0,0,0.85));
   border-bottom: 0.5px solid var(--hairline);
   backdrop-filter: blur(20px) saturate(140%);
   -webkit-backdrop-filter: blur(20px) saturate(140%);
+}
+/* Desktop / pointer-fine devices: drop the iOS status-bar reservation. */
+@media (pointer: fine) and (min-width: 601px) {
+  .ti-mc-topbar { padding: 12px 14px; }
+}
+.ti-mc-input {
+  flex-shrink: 0;
+  display: flex; align-items: center;
+  gap: 8px;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, rgba(0,0,0,0.85), rgba(0,0,0,0.95));
+  border-top: 0.5px solid var(--hairline);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 .ti-mc-back {
   width: 32px; height: 32px;
@@ -3602,16 +3624,6 @@ button {
   letter-spacing: -0.005em;
 }
 
-.ti-mc-input {
-  flex-shrink: 0;
-  display: flex; align-items: center;
-  gap: 8px;
-  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
-  background: linear-gradient(180deg, rgba(0,0,0,0.85), rgba(0,0,0,0.95));
-  border-top: 0.5px solid var(--hairline);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-}
 .ti-mc-input input {
   flex: 1;
   background: linear-gradient(180deg, #0c0c0e, #050506);
@@ -4564,6 +4576,7 @@ button {
   font-family: var(--font-display);
   letter-spacing: -0.005em;
   cursor: pointer;
+  touch-action: manipulation;
 }
 .ti-profile-logout:hover {
   color: var(--text);

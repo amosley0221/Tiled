@@ -2,7 +2,7 @@
 
 const { useState: useState_o, useRef: useRef_o, useEffect: useEffect_o, useMemo: useMemo_o } = React;
 
-function ExpandedTile({ tile, comments, onClose, onLike, onSave, onDelete, onComment, onVote, onTag, originRect, me, t }) {
+function ExpandedTile({ tile, comments, onClose, onLike, onSave, onDelete, onComment, onVote, onTag, onShowProfile, originRect, me, t }) {
   const isAuthor = me && tile.author && me.handle === tile.author.handle;
   const isStaff = me && (me.role === 'admin' || me.role === 'owner');
   const canDelete = isAuthor || isStaff;
@@ -87,7 +87,8 @@ function ExpandedTile({ tile, comments, onClose, onLike, onSave, onDelete, onCom
 
         <div className="ti-expanded-main">
           <header className="ti-tile-hd ti-tile-hd-lg">
-            <div className="ti-author">
+            <div className="ti-author"
+                 onClick={() => { if (onShowProfile) { onClose(); onShowProfile(tile.author.id); } }}>
               <div className="ti-avatar ti-avatar-lg">
                 {tile.author.avatar_url
                   ? <img src={tile.author.avatar_url} alt={tile.author.avatar} />
