@@ -3469,13 +3469,19 @@ button {
   display: flex; flex-direction: column;
   background: linear-gradient(180deg, #0a0a0c 0%, #050506 100%);
   animation: mcSlideUp .26s cubic-bezier(.2,.8,.2,1);
-  /* iOS PWA: reserve the safe-area on the wrapper so the sticky topbar
-     and bottom input render below the Dynamic Island and above the home
-     indicator, regardless of how iOS resolves env() inside descendants. */
-  padding-top: env(safe-area-inset-top);
+  /* iOS PWA: reserve the safe-area on the wrapper so the topbar renders
+     below the Dynamic Island. The max() with --ti-status-floor ensures
+     the topbar still clears an iPhone status bar even if env() resolves
+     to 0 inside this fixed/inset:0 stacking context (which happens on
+     some iOS PWA configurations). The floor is 0 by default and only
+     bumped on touch devices where the status bar matters. */
+  padding-top: max(env(safe-area-inset-top), var(--ti-status-floor, 0px));
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
   padding-bottom: env(safe-area-inset-bottom);
+}
+@media (pointer: coarse) {
+  .ti-mc-sheet { --ti-status-floor: 47px; }
 }
 @keyframes mcSlideUp {
   from { transform: translateY(20px); opacity: 0; }
