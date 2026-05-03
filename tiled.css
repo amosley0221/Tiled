@@ -3469,19 +3469,6 @@ button {
   display: flex; flex-direction: column;
   background: linear-gradient(180deg, #0a0a0c 0%, #050506 100%);
   animation: mcSlideUp .26s cubic-bezier(.2,.8,.2,1);
-  /* iOS PWA: reserve the safe-area on the wrapper so the topbar renders
-     below the Dynamic Island. The max() with --ti-status-floor ensures
-     the topbar still clears an iPhone status bar even if env() resolves
-     to 0 inside this fixed/inset:0 stacking context (which happens on
-     some iOS PWA configurations). The floor is 0 by default and only
-     bumped on touch devices where the status bar matters. */
-  padding-top: max(env(safe-area-inset-top), var(--ti-status-floor, 0px));
-  padding-left: env(safe-area-inset-left);
-  padding-right: env(safe-area-inset-right);
-  padding-bottom: env(safe-area-inset-bottom);
-}
-@media (pointer: coarse) {
-  .ti-mc-sheet { --ti-status-floor: 47px; }
 }
 @keyframes mcSlideUp {
   from { transform: translateY(20px); opacity: 0; }
@@ -3493,11 +3480,30 @@ button {
   grid-template-columns: 36px 1fr 36px;
   align-items: center;
   gap: 10px;
-  padding: 12px 14px;
+  /* Hardcoded 60px top padding so the topbar always clears the iPhone
+     status bar / Dynamic Island in PWA mode. env(safe-area-inset-top)
+     was unreliable inside this fixed/inset:0 container, so we bypass it
+     entirely and just reserve enough space. The bottom 12px keeps the
+     existing visual rhythm. */
+  padding: 60px 14px 12px;
   background: linear-gradient(180deg, rgba(0,0,0,0.95), rgba(0,0,0,0.85));
   border-bottom: 0.5px solid var(--hairline);
   backdrop-filter: blur(20px) saturate(140%);
   -webkit-backdrop-filter: blur(20px) saturate(140%);
+}
+/* Desktop / pointer-fine devices: drop the iOS status-bar reservation. */
+@media (pointer: fine) and (min-width: 601px) {
+  .ti-mc-topbar { padding: 12px 14px; }
+}
+.ti-mc-input {
+  flex-shrink: 0;
+  display: flex; align-items: center;
+  gap: 8px;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, rgba(0,0,0,0.85), rgba(0,0,0,0.95));
+  border-top: 0.5px solid var(--hairline);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 .ti-mc-back {
   width: 32px; height: 32px;
@@ -3618,16 +3624,6 @@ button {
   letter-spacing: -0.005em;
 }
 
-.ti-mc-input {
-  flex-shrink: 0;
-  display: flex; align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  background: linear-gradient(180deg, rgba(0,0,0,0.85), rgba(0,0,0,0.95));
-  border-top: 0.5px solid var(--hairline);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-}
 .ti-mc-input input {
   flex: 1;
   background: linear-gradient(180deg, #0c0c0e, #050506);
