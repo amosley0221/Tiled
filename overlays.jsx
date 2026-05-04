@@ -489,13 +489,15 @@ function Composer({ onClose, onPost, mode, existingTags = [], onUploadMedia }) {
                      : kind === 'audio' ? 'audio/*'
                      : '';
 
+  const isMediaKind = kind === 'photo' || kind === 'video' || kind === 'audio';
+  const needsBody = !isMediaKind;
+  const canPost = isMediaKind ? !!media : !!body.trim();
+
   const submit = (e) => {
     e?.preventDefault();
     setError(null);
-    // text/chart/grid require a body; media kinds can post with just media
-    const needsBody = kind === 'text' || kind === 'chart' || kind === 'grid' || kind === 'link' || kind === 'poll';
     if (needsBody && !body.trim()) return;
-    if ((kind === 'photo' || kind === 'video' || kind === 'audio') && !media) {
+    if (isMediaKind && !media) {
       setError('Pick a file first.');
       return;
     }
@@ -651,7 +653,7 @@ function Composer({ onClose, onPost, mode, existingTags = [], onUploadMedia }) {
         <footer className="ti-composer-ft">
           <div className="ti-composer-meta">{body.length} / 280</div>
           <button type="button" className="ti-btn-ghost" onClick={onClose}>Cancel</button>
-          <button type="submit" className="ti-btn-primary" disabled={!body.trim()}>Post tile</button>
+          <button type="submit" className="ti-btn-primary" disabled={!canPost}>Post tile</button>
         </footer>
       </form>
     </div>
