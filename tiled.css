@@ -484,10 +484,16 @@ button {
      header (Edit profile, Follow, etc.) fail to receive click events. The
      profile header is positioned at the top by scrollHomeToTop() instead.
      ti-no-snap is added briefly during programmatic scroll-to-top so
-     mandatory snap doesn't yank the page back to the first tile. */
+     mandatory snap doesn't yank the page back to the first tile.
+     On profile view we downgrade to `proximity` snap so the user can
+     scroll up past the first tile to see the profile header without
+     mandatory snap yanking them back down to it. */
   html:not(.ti-no-snap) {
     scroll-snap-type: y mandatory;
     scroll-padding-top: calc(64px + env(safe-area-inset-top));
+  }
+  html.ti-on-profile:not(.ti-no-snap) {
+    scroll-snap-type: y proximity;
   }
   .ti-grid > .ti-tile,
   .ti-grid > .ti-undo-slot {
