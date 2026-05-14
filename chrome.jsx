@@ -2,6 +2,72 @@
 
 const { useState: useState_c, useEffect: useEffect_c, useRef: useRef_c } = React;
 
+// Drag-to-switch behavior shared by every segmented pill in the app
+// (ModeToggle, ViewToggle, FeedSourceToggle). Returns event handlers
+// for the container, a dynamic thumb style that follows the finger
+// while dragging and snaps to the nearest segment on release, and a
+// ref to read with the buttons' onClick so a tap that happened to
+// include a drag doesn't fire two transitions.
+function useDragPill(items, currentId, setId) {
+  const containerRef = useRef_c(null);
+  const justDraggedRef = useRef_c(false);
+  const [drag, setDrag] = useState_c({ active: false, startX: 0, dx: 0, moved: false });
+  const n = items.length;
+  const idx = Math.max(0, items.findIndex(i => i.id === currentId));
+
+  const onPointerDown = (e) => {
+    if (n <= 1) return;
+    setDrag({ active: true, startX: e.clientX, dx: 0, moved: false });
+    try { containerRef.current?.setPointerCapture(e.pointerId); } catch (_) {}
+  };
+  const onPointerMove = (e) => {
+    if (!drag.active) return;
+    const dx = e.clientX - drag.startX;
+    const moved = drag.moved || Math.abs(dx) > 4;
+    setDrag(d => ({ ...d, dx, moved }));
+  };
+  const onPointerUp = (e) => {
+    if (!drag.active) return;
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (drag.moved && rect) {
+      const segW = (rect.width - 8) / n;
+      const x = e.clientX - rect.left - 4;
+      let newIdx = Math.floor(x / segW);
+      newIdx = Math.max(0, Math.min(n - 1, newIdx));
+      if (items[newIdx].id !== currentId) setId(items[newIdx].id);
+      justDraggedRef.current = true;
+      // clear after the synthetic click that follows pointerup fires
+      setTimeout(() => { justDraggedRef.current = false; }, 50);
+    }
+    setDrag({ active: false, startX: 0, dx: 0, moved: false });
+  };
+
+  let thumbStyle = {
+    left: `calc(4px + ${idx} * (100% - 8px) / ${n})`,
+    width: `calc((100% - 8px) / ${n})`,
+  };
+  if (drag.moved && containerRef.current) {
+    const rect = containerRef.current.getBoundingClientRect();
+    const segW = (rect.width - 8) / n;
+    const baseLeft = 4 + idx * segW;
+    const newLeft = Math.max(4, Math.min(4 + (n - 1) * segW, baseLeft + drag.dx));
+    thumbStyle = { left: `${newLeft}px`, width: `${segW}px`, transition: 'none' };
+  }
+
+  // Use this in button onClick to suppress the click that follows a drag.
+  const wrapClick = (fn) => (e) => {
+    if (justDraggedRef.current) { e.preventDefault(); return; }
+    fn(e);
+  };
+
+  return {
+    containerRef,
+    thumbStyle,
+    handlers: { onPointerDown, onPointerMove, onPointerUp, onPointerCancel: onPointerUp },
+    wrapClick,
+  };
+}
+
 function TopBar({ mode, setMode, filter, setFilter, view, setView, likedCount, savedCount, onCompose, onLogoClick, onProfile, isOnProfile, allTags, tagFilter, setTagFilter, userFilter, setUserFilter, onNotifications, notifUnread, onMessages, msgUnread, onAdmin, onFollow, followingIds, onShowProfile, user, t }) {
   const notifBtnRef = useRef_c(null);
   const handleBell = () => {
@@ -268,15 +334,14 @@ function ViewToggle({ view, setView, likedCount, savedCount }) {
     { id: 'liked', label: 'Liked', count: likedCount },
     { id: 'saved', label: 'Saved', count: savedCount },
   ];
-  const idx = Math.max(0, views.findIndex(v => v.id === view));
+  const { containerRef, thumbStyle, handlers, wrapClick } = useDragPill(views, view, setView);
   return (
-    <div className="ti-mode-toggle ti-view-segmented" data-view={view}>
-      <div className="ti-mode-thumb"
-           style={{ left: `calc(4px + ${idx} * (100% - 8px) / 3)`, width: 'calc((100% - 8px) / 3)' }} />
+    <div ref={containerRef} className="ti-mode-toggle ti-view-segmented" data-view={view} {...handlers}>
+      <div className="ti-mode-thumb" style={thumbStyle} />
       {views.map(v => (
         <button key={v.id}
                 className={`ti-mode-btn${view === v.id ? ' is-active' : ''}`}
-                onClick={() => setView(v.id)}>
+                onClick={wrapClick(() => setView(v.id))}>
           <ViewGlyph id={v.id} />
           <span>{v.label}</span>
           {v.count != null && v.count > 0 && <span className="ti-view-count">{v.count}</span>}
@@ -322,16 +387,15 @@ function ModeToggle({ mode, setMode, hideSocial, hidePro, hidePrivate }) {
   }, [hideSocial, hidePro, hidePrivate]);
 
   if (modes.length <= 1) return null;
-  const idx = Math.max(0, modes.findIndex(m => m.id === mode));
   const n = modes.length;
+  const { containerRef, thumbStyle, handlers, wrapClick } = useDragPill(modes, mode, setMode);
   return (
-    <div className="ti-mode-toggle" data-mode={mode} data-count={n}>
-      <div className="ti-mode-thumb"
-           style={{ left: `calc(4px + ${idx} * (100% - 8px) / ${n})`, width: `calc((100% - 8px) / ${n})` }} />
+    <div ref={containerRef} className="ti-mode-toggle" data-mode={mode} data-count={n} {...handlers}>
+      <div className="ti-mode-thumb" style={thumbStyle} />
       {modes.map(m => (
         <button key={m.id}
                 className={`ti-mode-btn${mode === m.id ? ' is-active' : ''}`}
-                onClick={() => setMode(m.id)}>
+                onClick={wrapClick(() => setMode(m.id))}>
           <ModeGlyph id={m.id} />
           <span>{m.label}</span>
         </button>
@@ -448,15 +512,14 @@ function FeedSourceToggle({ source, setSource }) {
     { id: 'following', label: 'Following' },
     { id: 'discover',  label: 'Discover' },
   ];
-  const idx = Math.max(0, opts.findIndex(o => o.id === source));
+  const { containerRef, thumbStyle, handlers, wrapClick } = useDragPill(opts, source, setSource);
   return (
-    <div className="ti-mode-toggle ti-feed-src" data-src={source}>
-      <div className="ti-mode-thumb"
-           style={{ left: `calc(4px + ${idx} * (100% - 8px) / 2)`, width: 'calc((100% - 8px) / 2)' }} />
+    <div ref={containerRef} className="ti-mode-toggle ti-feed-src" data-src={source} {...handlers}>
+      <div className="ti-mode-thumb" style={thumbStyle} />
       {opts.map(o => (
         <button key={o.id}
                 className={`ti-mode-btn${source === o.id ? ' is-active' : ''}`}
-                onClick={() => setSource(o.id)}>
+                onClick={wrapClick(() => setSource(o.id))}>
           <span>{o.label}</span>
         </button>
       ))}
