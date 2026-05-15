@@ -1457,7 +1457,15 @@ function TiledApp({ tweaks }) {
           <NewTilesChip count={pendingNew.length} onClick={revealPending} />
         )}
         {onProfile ? (
-          viewingProfileId ? (
+          <>
+          {/* Invisible 1px snap target at the very top so mandatory
+              scroll-snap has a valid resting position above the tiles —
+              otherwise scrolling up past the first tile yanks the page
+              back down. Can't use .ti-profile itself because iOS
+              snap-targets swallow touch events on their interactive
+              descendants (Edit profile, Follow, etc.) */}
+          <div className="ti-snap-top-anchor" aria-hidden="true" />
+          {viewingProfileId ? (
             <ProfileHeader
               isMe={false}
               user={viewedProfile ? {
@@ -1499,7 +1507,8 @@ function TiledApp({ tweaks }) {
               onShowFollowers={() => setFollowListOpen('followers')}
               onShowFollowing={() => setFollowListOpen('following')}
               mode={mode} />
-          )
+          )}
+          </>
         ) : (
           <FeedHeader mode={mode} view={view} count={visibleTiles.length}
                       tagFilter={tagFilter} onClearTag={() => setTagFilter(null)}
