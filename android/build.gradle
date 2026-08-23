@@ -1,0 +1,11 @@
+// Root build file — Tiled Android wrapper app
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        // AGP 8.3.x is compatible with Gradle 8.4
+        classpath 'com.android.tools.build:gradle:8.3.2'
+    }
+}

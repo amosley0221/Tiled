@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tiled: glossy black, no action bar, dark system bars -->
+    <style name="Theme.Tiled" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">#050506</item>
+        <item name="android:statusBarColor">#050506</item>
+        <item name="android:navigationBarColor">#050506</item>
+        <item name="colorPrimary">#050506</item>
+        <item name="colorAccent">#ffffff</item>
+        <item name="android:windowFullscreen">false</item>
+    </style>
+</resources>

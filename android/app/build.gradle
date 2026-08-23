@@ -1,0 +1,48 @@
+apply plugin: 'com.android.application'
+
+// Signing config is written by CI (signing.properties) or local dev can
+// create android/signing.properties manually — see README in android/.
+def signingProps = new Properties()
+def signingFile = rootProject.file('signing.properties')
+if (signingFile.exists()) {
+    signingFile.withInputStream { signingProps.load(it) }
+}
+
+android {
+    namespace      'app.tiled.android'
+    compileSdk     34
+
+    defaultConfig {
+        applicationId  'app.tiled.android'
+        minSdk         21        // Android 5.0 — covers ~99 % of active devices
+        targetSdk      34
+        versionCode    1
+        versionName    '1.0.0'
+    }
+
+    signingConfigs {
+        release {
+            storeFile     file(signingProps.getProperty('storeFile',     '../tiled-release.keystore'))
+            storePassword      signingProps.getProperty('storePassword', 'tiledapp')
+            keyAlias           signingProps.getProperty('keyAlias',      'tiled')
+            keyPassword        signingProps.getProperty('keyPassword',   'tiledapp')
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled  false
+            signingConfig  signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.webkit:webkit:1.10.0'
+}
